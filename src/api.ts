@@ -1,37 +1,45 @@
 import cors from 'cors';
+import { ChannelType, PermissionsBitField } from 'discord.js';
 import express, { Request, Response } from 'express';
 import fileUpload, { UploadedFile } from 'express-fileupload';
 import md5 from 'md5';
-import { ClientManager, FileUploadData } from "./client";
+import fs from 'node:fs/promises';
 
-type MessageResponse = {
-  content: string;
-  createdTimestamp: number;
-  attachments: {
-    id: string;
-    proxyUrl: string
-  }[]
-}
+import { ClientManager, FileUploadData } from "./client";
+import { IMessageResponse } from './lib/interfaces/message-response';
 
 export class ApiManager {
   private readonly app;
 
-  private readonly map: Map<string, (req: Request, res: Response) => Promise<void>> = new Map<string, (req: Request, res: Response) => Promise<void>>([
-    ['GET/', this.getRoot.bind(this)],
-    ['GET/messages', this.getMessages.bind(this)],
-    ['GET/history', this.getHistory.bind(this)],
-    ['POST/send', this.postMessage.bind(this)]
-  ]);
+  private readonly map: Map<string, (req: Request, res: Response) => Promise<void>>;
+
+  private readonly guildsApi: GuildsApi;
 
   constructor(
     private readonly port: number,
     private readonly clientManager: ClientManager
   ) {
+    this.guildsApi = new GuildsApi(this.clientManager);
     this.app = express();
 
     this.app.use(express.json());
     this.app.use(cors());
     this.app.use(fileUpload());
+
+    this.map = new Map<string, (req: Request, res: Response) => Promise<void>>([
+      ['GET/', this.getRoot.bind(this)],
+
+      // Guilds
+      ['GET/guilds', this.guildsApi.getGuilds.bind(this.guildsApi)],
+      ['GET/guildMembers', this.guildsApi.getMembers.bind(this.guildsApi)],
+      ['GET/guildChannels', this.guildsApi.getChannels.bind(this.guildsApi)],
+
+      // Users
+
+      ['GET/messages', this.getMessages.bind(this)],
+      ['GET/history', this.getHistory.bind(this)],
+      ['POST/send', this.postMessage.bind(this)]
+    ])
 
     this.map.forEach((method, key) => {
       const requestMethod = key.split('/')[0];
@@ -55,28 +63,50 @@ export class ApiManager {
   }
 
   private async getMessages(req: Request, res: Response) {
-    const messages: MessageResponse[] = this.clientManager.getMessages().map(message => ({
-      content: message.content,
-      createdTimestamp: message.createdTimestamp,
-      attachments: message.attachments.map(a => ({
-        id: a.id,
-        proxyUrl: a.proxyURL
-      }))
-    }));
-    res.send(messages);
-    await new Promise(f => setTimeout(f, 1000));
+    try {
+      const messages: IMessageResponse[] = this.clientManager.getMessages().map(message => ({
+        content: message.content,
+        createdTimestamp: message.createdTimestamp,
+        attachments: message.attachments.map(a => ({
+          id: a.id,
+          proxyUrl: a.proxyURL
+        }))
+      }));
+      res.send(messages);
+      await new Promise(f => setTimeout(f, 1));
+      this.clientManager.clearMessageCache();
 
-
-    this.clientManager.clearMessageCache();
-
-    return Promise.resolve();
+      return Promise.resolve();
+    }
+    catch {
+      res.send([]);
+      return Promise.reject();
+    }
   }
 
   private async getHistory(req: Request, res: Response) {
     const channelId = req.query['channelId'] as string;
-    const msgs = await this.clientManager.getMessageHistory(channelId);
-    res.send(msgs);
-    return Promise.resolve();
+    try {
+      const msgs = await this.clientManager.getMessageHistory(channelId);
+      if (!msgs)
+        throw new Error();
+
+      const response: IMessageResponse[] = msgs.map(message => ({
+        content: message.content,
+        createdTimestamp: message.createdTimestamp,
+        attachments: message.attachments.map(a => ({
+          id: a.id,
+          proxyUrl: a.proxyURL
+        }))
+      }));
+
+      res.send(response);
+      return Promise.resolve();
+    }
+    catch {
+      res.send([]);
+      return Promise.reject();
+    }
   }
 
   private async postMessage(req: Request, res: Response) {
@@ -103,6 +133,8 @@ export class ApiManager {
     const message = await this.clientManager.sendMessage(channelId, content, files);
     if (message) {
       res.send(message);
+
+      fs.unlink(uploadPath);
       return Promise.resolve();
     }
 
@@ -116,3 +148,69 @@ export class ApiManager {
   }
 }
 
+
+class GuildsApi {
+  constructor(private readonly clientManager: ClientManager) {
+  }
+
+  public async getGuilds(req: Request, res: Response) {
+    const guilds = await this.loadGuilds();
+
+    res.send(guilds.map(guild => ({
+      id: guild.id,
+      name: guild.name,
+      iconUrl: guild.iconURL()
+    })));
+
+    return Promise.resolve();
+  }
+
+
+  public async getMembers(req: Request, res: Response) {
+    const guildId = req.query['guildId'] as string;
+
+    const guild = await this.clientManager.client.guilds.fetch({ guild: guildId });
+    const members = await guild.members.fetch();
+
+    res.send(members.map(m => ({
+      id: m.id,
+      displayName: m.displayName,
+      nickname: m.nickname,
+      avatar: m.avatarURL(),
+      color: m.displayHexColor
+    })));
+
+    return Promise.resolve();
+  }
+
+  public async getChannels(req: Request, res: Response) {
+    const guildId = req.query['guildId'] as string;
+
+    const guild = await this.clientManager.client.guilds.fetch({ guild: guildId });
+    const channels = await guild.channels.fetch();
+
+    const response = channels.filter(c => c !== null)
+      .filter(c => c.type !== ChannelType.GuildCategory && c.type !== ChannelType.GuildVoice)
+      .filter(c => {
+        const perms = c.permissionsFor(guild.members.me!);
+        return perms.has(PermissionsBitField.Flags.ViewChannel) &&
+          perms.has(PermissionsBitField.Flags.ReadMessageHistory);
+      }).map(m => ({
+        id: m.id,
+        name: m.name,
+        category: m.parent?.name,
+        type: m.type
+      }))
+
+    res.send(response);
+
+    return Promise.resolve();
+  }
+
+
+  private async loadGuilds() {
+    const guilds = await this.clientManager.client.guilds.fetch();
+    return guilds;
+  }
+
+}

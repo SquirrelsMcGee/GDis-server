@@ -1,4 +1,4 @@
-import { Channel, Client, Guild, Message, TextChannel } from "discord.js";
+import { Channel, Client, GatewayIntentBits, Guild, Message, TextChannel } from "discord.js";
 import { config } from "./config";
 
 export type FileUploadData = {
@@ -14,7 +14,11 @@ export class ClientManager {
 
   constructor() {
     this.client = new Client({
-      intents: ["Guilds", "GuildMessages", "DirectMessages"],
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+      ],
     });
 
     this.client.on('messageCreate', async (message) => {
@@ -53,7 +57,7 @@ export class ClientManager {
   }
 
   public getMessages(): Message[] {
-    console.log(this.messageCache);
+    //console.log(this.messageCache);
     return this.messageCache;
   }
 
@@ -67,7 +71,7 @@ export class ClientManager {
     if (!channel)
       return Promise.reject();
 
-    console.log()
+    //console.log()
 
     let message: unknown;
     /*
@@ -91,12 +95,12 @@ export class ClientManager {
   }
 
   private logSuccess<T>(info: string, object: T) {
-    console.log(info, object);
+    //console.log(info, object);
     return object;
   }
 
   private logError<T>(info: string, object: T) {
-    console.error(info, object);
+    //console.error(info, object);
     return object
   }
 }
