@@ -6,13 +6,17 @@ import md5 from 'md5';
 import fs from 'node:fs/promises';
 
 import { ClientManager, FileUploadData } from "./client";
+import { Logger } from './helpers/logger';
+import { PermissionCheck } from './helpers/permission-checker';
+import { PromiseFactory } from './helpers/promise-factory';
 import { IMessageResponse } from './lib/interfaces/message-response';
+import { INamed } from './lib/named-class';
 
-export class ApiManager {
+export class ApiManager implements INamed {
+  public readonly name: string = 'ApiManager';
+
   private readonly app;
-
   private readonly map: Map<string, (req: Request, res: Response) => Promise<void>>;
-
   private readonly guildsApi: GuildsApi;
 
   constructor(
@@ -53,7 +57,7 @@ export class ApiManager {
 
   public listen(): void {
     this.app.listen(this.port, () => {
-      console.log(`Server is listening on port ${this.port}`);
+      Logger.log(this.name, 'REST API is listening on port', this.port);
     });
   }
 
@@ -80,7 +84,7 @@ export class ApiManager {
     }
     catch {
       res.send([]);
-      return Promise.reject();
+      return Promise.reject('Failed getMessages');
     }
   }
 
@@ -89,7 +93,7 @@ export class ApiManager {
     try {
       const msgs = await this.clientManager.getMessageHistory(channelId);
       if (!msgs)
-        throw new Error();
+        return Promise.reject('Failed to getHistory, no msgs');
 
       const response: IMessageResponse[] = msgs.map(message => ({
         content: message.content,
@@ -103,9 +107,9 @@ export class ApiManager {
       res.send(response);
       return Promise.resolve();
     }
-    catch {
+    catch (err) {
       res.send([]);
-      return Promise.reject();
+      return Promise.reject('Failed to getHistory, ' + err);
     }
   }
 
@@ -130,15 +134,22 @@ export class ApiManager {
         description: ''
       });
 
-    const message = await this.clientManager.sendMessage(channelId, content, files);
-    if (message) {
-      res.send(message);
+    try {
+      const message = await this.clientManager.sendMessage(channelId, content, files);
+      Logger.log('Sent message', message.id)
 
-      fs.unlink(uploadPath);
+      // Send the message back to the client
+      res.send(message);
+      // Delete any files      
+      if (uploadPath) fs.unlink(uploadPath);
+
+      // Return
       return Promise.resolve();
     }
-
-    return Promise.reject();
+    catch (err) {
+      Logger.error(this.name, 'fn postMessage', err)
+      return PromiseFactory.reject(this.name, ['fn postMessage', 'Failed to postMessage', err]);
+    }
   }
 
   private stripFileExtension(filename: string) {
@@ -192,9 +203,10 @@ class GuildsApi {
     const response = channels.filter(c => c !== null)
       .filter(c => c.type !== ChannelType.GuildCategory && c.type !== ChannelType.GuildVoice)
       .filter(c => {
-        const perms = c.permissionsFor(guild.members.me!);
-        return perms.has(PermissionsBitField.Flags.ViewChannel) &&
-          perms.has(PermissionsBitField.Flags.ReadMessageHistory);
+        return PermissionCheck.hasChannelPerms(c, [
+          PermissionsBitField.Flags.ViewChannel,
+          PermissionsBitField.Flags.ReadMessageHistory
+        ]);
       }).map(m => ({
         id: m.id,
         name: m.name,

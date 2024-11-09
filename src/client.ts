@@ -1,6 +1,10 @@
-import { Channel, Client, GatewayIntentBits, Guild, Message, TextChannel } from "discord.js";
+import { Channel, ChannelType, Client, GatewayIntentBits, Guild, GuildChannel, Message, PermissionsBitField, TextChannel } from "discord.js";
 import { config } from "./config";
+import { Logger } from "./helpers/logger";
+import { PermissionCheck } from "./helpers/permission-checker";
+import { PromiseFactory } from "./helpers/promise-factory";
 import { Ollama } from "./integrations/ollama";
+import { INamed } from "./lib/named-class";
 
 export type FileUploadData = {
   attachment: string;
@@ -8,11 +12,12 @@ export type FileUploadData = {
   description?: string;
 };
 
-export class ClientManager {
+export class ClientManager implements INamed {
+  public readonly name: string = 'ClientManager';
+
   public client: Client;
 
   private readonly ollama: Ollama = new Ollama();
-
   private messageCache: Message[] = [];
 
   constructor() {
@@ -26,7 +31,6 @@ export class ClientManager {
     });
 
     this.client.on('messageCreate', async (message) => {
-      //console.log('received message ', message.id);
       this.messageCache.push(message);
 
       // Dont do anything if it's me
@@ -36,7 +40,7 @@ export class ClientManager {
       // Sandbox to this channel
       // Replace with whatever channel Id you want
       // Or remove idc
-      if (message.channel.id !== '820763406389870645')
+      if (message.channel.id !== '1302754124147855380')
         return;
 
       if (!this.isMention(message) && !await this.isReply(message))
@@ -46,10 +50,7 @@ export class ClientManager {
     });
 
     this.client.once("ready", (client) => {
-      console.log("Discord bot is ready! 🤖");
-      console.table([
-        { a: 'Logged in as', b: client.user.username },
-      ]);
+      Logger.log(this.name, 'Discord bot is ready', client.user.username);
     });
 
     this.client.login(config.DISCORD_TOKEN);
@@ -76,7 +77,6 @@ export class ClientManager {
   }
 
   public getMessages(): Message[] {
-    //console.log(this.messageCache);
     return this.messageCache;
   }
 
@@ -88,29 +88,24 @@ export class ClientManager {
     const channel = await this.getChannel<TextChannel>(channelId);
 
     if (!channel)
-      return Promise.reject();
+      return Promise.reject('Failed to sendMessage, no channel');
 
-    //console.log()
-
-    let message: unknown;
-    /*
-    if (files.length > 0)
-      message = {
-        content: content,
-        files: files
-      }
-    else {
-      message = {
-        content: content
-      }
-    }
-    */
-    message = {
+    let message = {
       content: content,
       files: files
     }
-    return channel.send(message as any).then((messageRes) => this.logSuccess('Sent message', messageRes.id))
-      .catch((err) => this.logError('Failed to send message', err));
+
+    return channel.send(message as any);
+  }
+
+  public async sendReply(replyTo: Message, content: string): Promise<Message> {
+    if (!PermissionCheck.isChannelType(replyTo.channel, [ChannelType.GuildText]))
+      return PromiseFactory.reject(this.name, ['fn sendReply', 'Channel type is not GuildText', replyTo.channel.type]);
+
+    if (!PermissionCheck.hasChannelPerms(replyTo.channel as GuildChannel, [PermissionsBitField.Flags.SendMessages]))
+      return PromiseFactory.reject(this.name, ['fn sendReply', 'Does not have SendMessages permission']);
+
+    return replyTo.reply(content);
   }
 
   private isMention(message: Message): boolean {
@@ -127,7 +122,11 @@ export class ClientManager {
         // Check if the original message was sent by the bot
         if (referencedMessage.author.id === this.client.user?.id)
           return Promise.resolve(true);
-      } catch (error) {
+
+      }
+      catch (error) {
+        Logger.error(this.name, 'fn isReply', error);
+      } finally {
         return Promise.resolve(false);
       }
     }
@@ -136,24 +135,13 @@ export class ClientManager {
   }
 
   private async sendLLMResponse(message: Message) {
-    console.log('getting ai llm response', message.cleanContent);
-
-    this.ollama.getResponse(message.channel.id, message.author.displayName, message.cleanContent)
-      .then(botResponse => {
-        console.log('[REPLY]', botResponse);
-        message.reply(botResponse);
-      }).catch((err) => {
-        console.log(err);
-      });
-  }
-
-  private logSuccess<T>(info: string, object: T) {
-    //console.log(info, object);
-    return object;
-  }
-
-  private logError<T>(info: string, object: T) {
-    //console.error(info, object);
-    return object
+    const content = message.cleanContent.replace(`@BotsByDre`, '');
+    try {
+      const ollamaResponse = await this.ollama.getResponse(message.channel.id, message.author.displayName, content);
+      await this.sendReply(message, ollamaResponse);
+    }
+    catch (error) {
+      Logger.error(this.name, 'fn sendLLMResponse', error);
+    }
   }
 }
