@@ -77,7 +77,7 @@ Acknowledge these instructions with an OK and wait for the chat messages to come
       context: context
     };
 
-    Logger.log('Sending Prompt', prompt);
+    // Logger.log('Sending Prompt to ollama', prompt.slice(0, 20));
     return this.sendPostRequest(this.endpoint, postBody);
   }
 

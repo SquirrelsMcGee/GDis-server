@@ -100,7 +100,7 @@ export class ClientFunctions implements INamed {
 
   private readonly ollama: Ollama = new Ollama();
 
-  private readonly sandboxChannelId = '1302754124147855380';
+  private readonly sandboxGuildIds = ['673908382809325620', '820763406389870645'];
 
   constructor(
     private readonly client: Client,
@@ -121,13 +121,15 @@ export class ClientFunctions implements INamed {
 
 
   private async sendLLMResponse(message: Message) {
+
     // Define conditions for this action
     const preconditions: PreconditionInfo[] = [
+      { name: 'isNotSystemMessage', condition: this.isNotSystemMessage.bind(this, message) },
       { name: 'authorIsNotMe', condition: this.authorIsNotMe.bind(this, message) },
-      { name: 'isMention or isReply', condition: this.isMentionOrReply.bind(this, message) },
+      { name: 'isThreadOrDirect', condition: this.isThreadOrDirect.bind(this, message) },
       // Sandbox to this channel
       // Replace with whatever channel Id you want
-      { name: 'sandbox channel', condition: this.isSandboxChannel.bind(this, message) }
+      { name: 'isSandboxed', condition: this.isSandboxed.bind(this, message) }
     ];
 
     try {
@@ -135,6 +137,11 @@ export class ClientFunctions implements INamed {
       const okay = await this.assertPreconditions(preconditions);
       if (!okay)
         throw ['Preconditions not met for user', message.author.username];
+
+      const channel = message.thread ?? (message.channel as TextChannel);
+
+      // Start typing...
+      await channel.sendTyping();
 
       // Remove the bot mention from the message
       const content = message.cleanContent.replace(`@BotsByDre`, '');
@@ -145,14 +152,14 @@ export class ClientFunctions implements INamed {
       return this.sendReply(message, ollamaResponse);
     }
     catch (error) {
-      // Logger.error(this.name, 'fn sendLLMResponse', error);
+      Logger.error(this.name, 'fn sendLLMResponse', error);
       return PromiseFactory.reject(this.name, ['fn sendLLMResponse', error]);
     }
   }
 
 
   public async sendReply(replyTo: Message, content: string): Promise<Message> {
-    if (!PermissionCheck.isChannelType(replyTo.channel, [ChannelType.GuildText]))
+    if (!PermissionCheck.isChannelType(replyTo.channel, [ChannelType.GuildText, ChannelType.PrivateThread]))
       return PromiseFactory.reject(this.name, ['fn sendReply', 'Channel type is not GuildText', replyTo.channel.type]);
 
     if (!PermissionCheck.hasChannelPerms(replyTo.channel as GuildChannel, [PermissionsBitField.Flags.SendMessages]))
@@ -180,20 +187,40 @@ export class ClientFunctions implements INamed {
   /**
    * Helpers
    */
+
+  private async isNotSystemMessage(message: Message): Promise<boolean> {
+    const isSystemMessage = !message.thread && message.system;
+    return Promise.resolve(!isSystemMessage);
+  }
+
   private async authorIsNotMe(message: Message): Promise<boolean> {
     const isMe = message.author.id !== this.client.user?.id;
     return Promise.resolve<boolean>(isMe);
   }
 
+  private async isThreadOrDirect(message: Message): Promise<boolean> {
+    const isThread = await this.isThread(message);
+    if (isThread)
+      return Promise.resolve(isThread);
+
+    const isMentionOrReply = await this.isMentionOrReply(message);
+    return Promise.resolve(isMentionOrReply);
+  }
+
   private async isMentionOrReply(message: Message): Promise<boolean> {
     const isMention = await this.isMention(message);
     const isReply = await this.isReply(message);
-    return Promise.resolve((isMention || isReply));
+    return Promise.resolve(isMention || isReply);
   }
 
   private async isMention(message: Message): Promise<boolean> {
     const isMention = message.mentions.users.map(u => u.id).includes(this.client.user?.id ?? '');
     return Promise.resolve(isMention);
+  }
+
+  private async isThread(message: Message): Promise<boolean> {
+    const isValid = PermissionCheck.isChannelType(message.channel, [ChannelType.GuildText, ChannelType.PrivateThread]);
+    return Promise.resolve(isValid);
   }
 
   private async isReply(message: Message): Promise<boolean> {
@@ -218,7 +245,8 @@ export class ClientFunctions implements INamed {
     return Promise.resolve(false);
   }
 
-  private async isSandboxChannel(message: Message): Promise<boolean> {
-    return Promise.resolve(message.channel.id === this.sandboxChannelId);
+  private async isSandboxed(message: Message): Promise<boolean> {
+    const isInSandbox = this.sandboxGuildIds.includes(message.guild?.id ?? '');
+    return Promise.resolve(isInSandbox);
   }
 }
