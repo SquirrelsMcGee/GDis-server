@@ -108,34 +108,45 @@ export class ClientFunctions implements INamed {
   ) { }
 
   public async onMessage(message: Message) {
-    if (this.cacheMessages)
-      this.messageCache.push(message);
+    try {
+      if (this.cacheMessages)
+        this.messageCache.push(message);
 
-    this.sendLLMResponse(message);
+      await this.sendLLMResponse(message);
+    }
+    catch (error) {
+      // Logger.error(this.name, error);
+    }
   }
 
 
   private async sendLLMResponse(message: Message) {
-    try {
-      const preconditions: PreconditionInfo[] = [
-        { name: 'authorIsNotMe', condition: this.authorIsNotMe.bind(this, message) },
-        { name: 'isMention or isReply', condition: this.isMentionOrReply.bind(this, message) },
-        // Sandbox to this channel
-        // Replace with whatever channel Id you want
-        { name: 'sandbox channel', condition: this.isSandboxChannel.bind(this, message) }
-      ];
+    // Define conditions for this action
+    const preconditions: PreconditionInfo[] = [
+      { name: 'authorIsNotMe', condition: this.authorIsNotMe.bind(this, message) },
+      { name: 'isMention or isReply', condition: this.isMentionOrReply.bind(this, message) },
+      // Sandbox to this channel
+      // Replace with whatever channel Id you want
+      { name: 'sandbox channel', condition: this.isSandboxChannel.bind(this, message) }
+    ];
 
+    try {
+      // Assert preconditions
       const okay = await this.assertPreconditions(preconditions);
       if (!okay)
-        throw '';
+        throw ['Preconditions not met for user', message.author.username];
 
+      // Remove the bot mention from the message
       const content = message.cleanContent.replace(`@BotsByDre`, '');
-
+      // Get the response from Ollama
       const ollamaResponse = await this.ollama.getResponse(message.channel.id, message.author.displayName, content);
-      await this.sendReply(message, ollamaResponse);
+
+      // Send the reply
+      return this.sendReply(message, ollamaResponse);
     }
     catch (error) {
-      Logger.error(this.name, 'fn sendLLMResponse', error);
+      // Logger.error(this.name, 'fn sendLLMResponse', error);
+      return PromiseFactory.reject(this.name, ['fn sendLLMResponse', error]);
     }
   }
 
@@ -155,11 +166,12 @@ export class ClientFunctions implements INamed {
 
     for (let i = 0; i < preconditions.length; i++) {
       const result = await preconditions[i].condition();
+      allOkay = allOkay && result;
+
       //if (result)
       //  Logger.log(this.name, 'fn assertPreconditions', 'passed', preconditions[i].name)
       //if (!result)
       //  Logger.error(this.name, 'fn assertPreconditions', 'failed', preconditions[i].name);
-      allOkay = allOkay && result;
     }
 
     return Promise.resolve(allOkay);
@@ -170,14 +182,12 @@ export class ClientFunctions implements INamed {
    */
   private async authorIsNotMe(message: Message): Promise<boolean> {
     const isMe = message.author.id !== this.client.user?.id;
-    console.log(isMe);
     return Promise.resolve<boolean>(isMe);
   }
 
   private async isMentionOrReply(message: Message): Promise<boolean> {
     const isMention = await this.isMention(message);
     const isReply = await this.isReply(message);
-
     return Promise.resolve((isMention || isReply));
   }
 
@@ -199,7 +209,8 @@ export class ClientFunctions implements INamed {
       }
       catch (error) {
         Logger.error(this.name, 'fn isReply', error);
-      } finally {
+      }
+      finally {
         return Promise.resolve(false);
       }
     }
