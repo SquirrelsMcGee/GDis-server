@@ -1,8 +1,8 @@
 
-import { map, Observable } from "rxjs";
+import { first, map, Observable } from "rxjs";
 import { config } from "../config";
 import { HttpService } from "../helpers/http";
-import { IWebSearchApiResponse } from "../lib/interfaces/web-search-api-response";
+import { ISearchResult, IWebSearchApiResponse } from "../lib/interfaces/web-search-api-response";
 import { INamed } from "../lib/named-class";
 
 export class BraveSearch implements INamed {
@@ -14,8 +14,10 @@ export class BraveSearch implements INamed {
 
   constructor() {
     this.http = new HttpService('https://api.search.brave.com');
+  }
 
-    this.doSearch('brave').pipe(map(r => r.web)).subscribe(result => console.log(result));
+  public search(query: string): Observable<ISearchResult[]> {
+    return this.doSearch(query).pipe(map(result => result.web.results));
   }
 
   private doSearch(query: string): Observable<IWebSearchApiResponse> {
@@ -28,8 +30,10 @@ export class BraveSearch implements INamed {
     const params = new URLSearchParams({
       'q': encodeURIComponent(query),
       'count': '5',
+      'safesearch': 'off'
     });
 
-    return this.http.get<IWebSearchApiResponse>('res/v1/web/search', params, headers);
+    return this.http.get<IWebSearchApiResponse>('res/v1/web/search', params, headers)
+      .pipe(first());
   }
 }

@@ -3,7 +3,9 @@ import { config } from "./config";
 import { Logger } from "./helpers/logger";
 import { PermissionCheck } from "./helpers/permission-checker";
 import { PromiseFactory } from "./helpers/promise-factory";
+import { BraveSearch } from "./integrations/brave-search";
 import { Ollama } from "./integrations/ollama";
+import { OllamaCategoriser } from "./integrations/ollama-catagoriser";
 import { INamed } from "./lib/named-class";
 
 export type FileUploadData = {
@@ -100,6 +102,9 @@ export class ClientFunctions implements INamed {
   private messageCache: Message[] = [];
 
   private readonly ollama: Ollama = new Ollama();
+  private readonly categoriser: Ollama = new OllamaCategoriser();
+
+  private readonly braveSearch: BraveSearch = new BraveSearch();
 
   private readonly sandboxGuildIds = ['673908382809325620', '820763406389870642'];
 
@@ -113,15 +118,47 @@ export class ClientFunctions implements INamed {
       if (this.cacheMessages)
         this.messageCache.push(message);
 
+      //const category = await this.categoriseMessage(message);
+      //console.log('category', category);
+      //if (category.includes('[Web Search]') && await this.authorIsNotMe(message)) {
+      //  const searchTerm = category.slice('[Web Search]'.length);
+      //
+      //  this.braveSearch.search(searchTerm)
+      //    .pipe(first())
+      //    .subscribe(async results => {
+      //      if (results.length === 0)
+      //        return;
+      //
+      //      const contextObjects = results.map(SearchResult.fromObject).map(r => r.toString());
+      //      await this.sendLLMResponse(message, contextObjects.join('\r\n'));
+      //    });
+      //}
+      //else {
       await this.sendLLMResponse(message);
+      //}
+
     }
     catch (error) {
       // Logger.error(this.name, error);
     }
   }
 
+  private async categoriseMessage(message: Message): Promise<string> {
+    try {
+      // Remove the bot mention from the message
+      const content = message.cleanContent.replace(`@BotsByDre`, '');
+      // Get the response from Ollama
+      const ollamaResponse = await this.categoriser.getResponse(message.channel.id, message.author.displayName, content);
 
-  private async sendLLMResponse(message: Message) {
+      return Promise.resolve(ollamaResponse);
+    }
+    catch (error) {
+      Logger.error(this.name, 'fn categoriseMessage', error);
+      return PromiseFactory.reject(this.name, ['fn categoriseMessage', error]);
+    }
+  }
+
+  private async sendLLMResponse(message: Message, optionalContext?: string) {
 
     // Define conditions for this action
     const preconditions: PreconditionInfo[] = [
@@ -146,8 +183,11 @@ export class ClientFunctions implements INamed {
 
       // Remove the bot mention from the message
       const content = message.cleanContent.replace(`@BotsByDre`, '');
+      const contextualContent = optionalContext ? optionalContext + '\r\n' + content : content;
+
       // Get the response from Ollama
-      const ollamaResponse = await this.ollama.getResponse(message.channel.id, message.author.displayName, content);
+      //console.log('contextual', contextualContent);
+      const ollamaResponse = await this.ollama.getResponse(message.channel.id, message.author.displayName, contextualContent);
 
       // Send the reply
       return this.sendReply(message, ollamaResponse);
@@ -176,10 +216,10 @@ export class ClientFunctions implements INamed {
       const result = await preconditions[i].condition();
       allOkay = allOkay && result;
 
-      if (result)
-        Logger.log(this.name, 'fn assertPreconditions', 'passed', preconditions[i].name)
-      if (!result)
-        Logger.error(this.name, 'fn assertPreconditions', 'failed', preconditions[i].name);
+      //if (result)
+      //  Logger.log(this.name, 'fn assertPreconditions', 'passed', preconditions[i].name)
+      //if (!result)
+      //  Logger.error(this.name, 'fn assertPreconditions', 'failed', preconditions[i].name);
     }
 
     return Promise.resolve(allOkay);

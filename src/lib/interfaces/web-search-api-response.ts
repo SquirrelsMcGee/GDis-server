@@ -33,10 +33,15 @@ export class SearchResult implements ISearchResult {
     this.description = description;
   }
 
+  public static fromObject(obj: ISearchResult) {
+    return new SearchResult(obj.title, obj.url, obj.description);
+  }
+
   toString(): string {
-    return `<searchResponse>
+    return `<searchContext>
 <title> ${this.title} </title>
 <url> ${this.url} </url>
-<description> ${this.description} </description>`;
+<description> ${this.description} </description>
+</searchContext>`;
   }
 }
