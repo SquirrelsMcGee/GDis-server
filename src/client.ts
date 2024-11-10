@@ -17,8 +17,9 @@ export class ClientManager implements INamed {
 
   public client: Client;
 
-  private readonly ollama: Ollama = new Ollama();
   private messageCache: Message[] = [];
+
+  private readonly functions: ClientFunctions;
 
   constructor() {
     this.client = new Client({
@@ -30,24 +31,9 @@ export class ClientManager implements INamed {
       ],
     });
 
-    this.client.on('messageCreate', async (message) => {
-      this.messageCache.push(message);
+    this.client.on('messageCreate', async (message) => this.functions.onMessage(message));
 
-      // Dont do anything if it's me
-      if (message.author.id === this.client.user?.id)
-        return;
-
-      // Sandbox to this channel
-      // Replace with whatever channel Id you want
-      // Or remove idc
-      if (message.channel.id !== '1302754124147855380')
-        return;
-
-      if (!this.isMention(message) && !await this.isReply(message))
-        return;
-
-      this.sendLLMResponse(message);
-    });
+    this.functions = new ClientFunctions(this.client, true);
 
     this.client.once("ready", (client) => {
       Logger.log(this.name, 'Discord bot is ready', client.user.username);
@@ -98,6 +84,62 @@ export class ClientManager implements INamed {
     return channel.send(message as any);
   }
 
+}
+
+type PreconditionInfo = {
+  name: string;
+  condition: Precondition;
+}
+
+type Precondition = () => Promise<boolean>;
+
+export class ClientFunctions implements INamed {
+  public readonly name: string = 'ClientFunctions';
+
+  private messageCache: Message[] = [];
+
+  private readonly ollama: Ollama = new Ollama();
+
+  private readonly sandboxChannelId = '1302754124147855380';
+
+  constructor(
+    private readonly client: Client,
+    private readonly cacheMessages: boolean
+  ) { }
+
+  public async onMessage(message: Message) {
+    if (this.cacheMessages)
+      this.messageCache.push(message);
+
+    this.sendLLMResponse(message);
+  }
+
+
+  private async sendLLMResponse(message: Message) {
+    try {
+      const preconditions: PreconditionInfo[] = [
+        { name: 'authorIsNotMe', condition: this.authorIsNotMe.bind(this, message) },
+        { name: 'isMention or isReply', condition: this.isMentionOrReply.bind(this, message) },
+        // Sandbox to this channel
+        // Replace with whatever channel Id you want
+        { name: 'sandbox channel', condition: this.isSandboxChannel.bind(this, message) }
+      ];
+
+      const okay = await this.assertPreconditions(preconditions);
+      if (!okay)
+        throw '';
+
+      const content = message.cleanContent.replace(`@BotsByDre`, '');
+
+      const ollamaResponse = await this.ollama.getResponse(message.channel.id, message.author.displayName, content);
+      await this.sendReply(message, ollamaResponse);
+    }
+    catch (error) {
+      Logger.error(this.name, 'fn sendLLMResponse', error);
+    }
+  }
+
+
   public async sendReply(replyTo: Message, content: string): Promise<Message> {
     if (!PermissionCheck.isChannelType(replyTo.channel, [ChannelType.GuildText]))
       return PromiseFactory.reject(this.name, ['fn sendReply', 'Channel type is not GuildText', replyTo.channel.type]);
@@ -108,8 +150,40 @@ export class ClientManager implements INamed {
     return replyTo.reply(content);
   }
 
-  private isMention(message: Message): boolean {
-    return message.mentions.users.map(u => u.id).includes(this.client.user?.id ?? '');
+  private async assertPreconditions(preconditions: PreconditionInfo[]): Promise<boolean> {
+    let allOkay = true;
+
+    for (let i = 0; i < preconditions.length; i++) {
+      const result = await preconditions[i].condition();
+      //if (result)
+      //  Logger.log(this.name, 'fn assertPreconditions', 'passed', preconditions[i].name)
+      //if (!result)
+      //  Logger.error(this.name, 'fn assertPreconditions', 'failed', preconditions[i].name);
+      allOkay = allOkay && result;
+    }
+
+    return Promise.resolve(allOkay);
+  }
+
+  /**
+   * Helpers
+   */
+  private async authorIsNotMe(message: Message): Promise<boolean> {
+    const isMe = message.author.id !== this.client.user?.id;
+    console.log(isMe);
+    return Promise.resolve<boolean>(isMe);
+  }
+
+  private async isMentionOrReply(message: Message): Promise<boolean> {
+    const isMention = await this.isMention(message);
+    const isReply = await this.isReply(message);
+
+    return Promise.resolve((isMention || isReply));
+  }
+
+  private async isMention(message: Message): Promise<boolean> {
+    const isMention = message.mentions.users.map(u => u.id).includes(this.client.user?.id ?? '');
+    return Promise.resolve(isMention);
   }
 
   private async isReply(message: Message): Promise<boolean> {
@@ -122,7 +196,6 @@ export class ClientManager implements INamed {
         // Check if the original message was sent by the bot
         if (referencedMessage.author.id === this.client.user?.id)
           return Promise.resolve(true);
-
       }
       catch (error) {
         Logger.error(this.name, 'fn isReply', error);
@@ -134,14 +207,7 @@ export class ClientManager implements INamed {
     return Promise.resolve(false);
   }
 
-  private async sendLLMResponse(message: Message) {
-    const content = message.cleanContent.replace(`@BotsByDre`, '');
-    try {
-      const ollamaResponse = await this.ollama.getResponse(message.channel.id, message.author.displayName, content);
-      await this.sendReply(message, ollamaResponse);
-    }
-    catch (error) {
-      Logger.error(this.name, 'fn sendLLMResponse', error);
-    }
+  private async isSandboxChannel(message: Message): Promise<boolean> {
+    return Promise.resolve(message.channel.id === this.sandboxChannelId);
   }
 }
