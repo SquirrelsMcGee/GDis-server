@@ -27,7 +27,8 @@ export class ClientManager implements INamed {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates
       ],
     });
 
@@ -100,7 +101,7 @@ export class ClientFunctions implements INamed {
 
   private readonly ollama: Ollama = new Ollama();
 
-  private readonly sandboxGuildIds = ['673908382809325620', '820763406389870645'];
+  private readonly sandboxGuildIds = ['673908382809325620', '820763406389870642'];
 
   constructor(
     private readonly client: Client,
@@ -175,10 +176,10 @@ export class ClientFunctions implements INamed {
       const result = await preconditions[i].condition();
       allOkay = allOkay && result;
 
-      //if (result)
-      //  Logger.log(this.name, 'fn assertPreconditions', 'passed', preconditions[i].name)
-      //if (!result)
-      //  Logger.error(this.name, 'fn assertPreconditions', 'failed', preconditions[i].name);
+      if (result)
+        Logger.log(this.name, 'fn assertPreconditions', 'passed', preconditions[i].name)
+      if (!result)
+        Logger.error(this.name, 'fn assertPreconditions', 'failed', preconditions[i].name);
     }
 
     return Promise.resolve(allOkay);
@@ -219,7 +220,7 @@ export class ClientFunctions implements INamed {
   }
 
   private async isThread(message: Message): Promise<boolean> {
-    const isValid = PermissionCheck.isChannelType(message.channel, [ChannelType.GuildText, ChannelType.PrivateThread]);
+    const isValid = PermissionCheck.isChannelType(message.channel, [ChannelType.PrivateThread]);
     return Promise.resolve(isValid);
   }
 
