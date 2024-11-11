@@ -5,7 +5,7 @@ import fileUpload, { UploadedFile } from 'express-fileupload';
 import md5 from 'md5';
 import fs from 'node:fs/promises';
 
-import { ClientManager, FileUploadData } from "./client";
+import { ClientManager, FileUploadData } from './discord-client/client-manager';
 import { Logger } from './helpers/logger';
 import { PermissionCheck } from './helpers/permission-checker';
 import { PromiseFactory } from './helpers/promise-factory';
@@ -204,7 +204,7 @@ class GuildsApi {
     const response = channels.filter(c => c !== null)
       .filter(c => c.type !== ChannelType.GuildCategory && c.type !== ChannelType.GuildVoice)
       .filter(c => {
-        return PermissionCheck.hasChannelPerms(c, [
+        return PermissionCheck.hasGuildChannelPermissions(c, [
           PermissionsBitField.Flags.ViewChannel,
           PermissionsBitField.Flags.ReadMessageHistory
         ]);

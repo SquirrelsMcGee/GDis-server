@@ -1,5 +1,5 @@
 import { ApiManager } from './api';
-import { ClientManager } from './client';
+import { ClientManager } from './discord-client/client-manager';
 
 const clientManager = new ClientManager();
 const apiManager = new ApiManager(4090, clientManager);

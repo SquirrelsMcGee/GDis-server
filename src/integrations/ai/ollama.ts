@@ -29,7 +29,6 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
   protected readonly contextMap: Map<string, string> = new Map<string, string>();
   protected readonly http: HttpService;
 
-
   protected readonly conversationProvider: IPromptProvider<unknown>;
   protected readonly chatMessageProvider: IPromptProvider<ResponseInput>;
 
