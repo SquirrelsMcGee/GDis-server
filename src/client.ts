@@ -1,11 +1,14 @@
 import { Channel, ChannelType, Client, GatewayIntentBits, Guild, GuildChannel, Message, PermissionsBitField, TextChannel } from "discord.js";
-import { config } from "./config";
+import { first } from "rxjs";
+import { ENV_CONFIG } from "./config";
 import { Logger } from "./helpers/logger";
 import { PermissionCheck } from "./helpers/permission-checker";
 import { PromiseFactory } from "./helpers/promise-factory";
-import { BraveSearch } from "./integrations/brave-search";
-import { Ollama } from "./integrations/ollama";
-import { OllamaCategoriser } from "./integrations/ollama-catagoriser";
+import { OllamaCategoriser } from "./integrations/ai/message-categoriser";
+import { Ollama } from "./integrations/ai/ollama";
+import { ChatMessageInput } from "./integrations/ai/prompt-providers/discord-chat";
+import { SearchSummarizer } from "./integrations/ai/search-summarizer";
+import { BraveSearch } from "./integrations/web-search/brave-search";
 import { INamed } from "./lib/named-class";
 
 export type FileUploadData = {
@@ -42,7 +45,7 @@ export class ClientManager implements INamed {
       Logger.log(this.name, 'Discord bot is ready', client.user.username);
     });
 
-    this.client.login(config.DISCORD_TOKEN);
+    this.client.login(ENV_CONFIG.DISCORD_TOKEN);
   }
 
   public async getChannel<T extends Channel>(id: string, assertSendable: boolean = true): Promise<T | null> {
@@ -101,8 +104,9 @@ export class ClientFunctions implements INamed {
 
   private messageCache: Message[] = [];
 
-  private readonly ollama: Ollama = new Ollama();
-  private readonly categoriser: Ollama = new OllamaCategoriser();
+  private readonly ollama = new Ollama();
+  private readonly categoriser = new OllamaCategoriser();
+  private readonly summariser = new SearchSummarizer();
 
   private readonly braveSearch: BraveSearch = new BraveSearch();
 
@@ -118,24 +122,25 @@ export class ClientFunctions implements INamed {
       if (this.cacheMessages)
         this.messageCache.push(message);
 
-      //const category = await this.categoriseMessage(message);
+      const category = await this.categoriseMessage(message);
       //console.log('category', category);
-      //if (category.includes('[Web Search]') && await this.authorIsNotMe(message)) {
-      //  const searchTerm = category.slice('[Web Search]'.length);
-      //
-      //  this.braveSearch.search(searchTerm)
-      //    .pipe(first())
-      //    .subscribe(async results => {
-      //      if (results.length === 0)
-      //        return;
-      //
-      //      const contextObjects = results.map(SearchResult.fromObject).map(r => r.toString());
-      //      await this.sendLLMResponse(message, contextObjects.join('\r\n'));
-      //    });
-      //}
-      //else {
-      await this.sendLLMResponse(message);
-      //}
+      if (category.includes('[Web Search]') && await this.authorIsNotMe(message)) {
+        Logger.log(this.name, 'Using Websearch for this request');
+        const searchTerm = category.slice('[Web Search]'.length);
+
+        this.braveSearch.search(searchTerm)
+          .pipe(first())
+          .subscribe(async results => {
+            if (results.length === 0)
+              return;
+
+            const summary = await this.summariser.getResponse(results);
+            await this.sendLLMResponse(message, summary);
+          });
+      }
+      else {
+        await this.sendLLMResponse(message);
+      }
 
     }
     catch (error) {
@@ -148,7 +153,12 @@ export class ClientFunctions implements INamed {
       // Remove the bot mention from the message
       const content = message.cleanContent.replace(`@BotsByDre`, '');
       // Get the response from Ollama
-      const ollamaResponse = await this.categoriser.getResponse(message.channel.id, message.author.displayName, content);
+      const input: ChatMessageInput = {
+        channelId: message.channel.id,
+        username: message.author.displayName,
+        message: content
+      }
+      const ollamaResponse = await this.categoriser.getResponse(input);
 
       return Promise.resolve(ollamaResponse);
     }
@@ -183,11 +193,16 @@ export class ClientFunctions implements INamed {
 
       // Remove the bot mention from the message
       const content = message.cleanContent.replace(`@BotsByDre`, '');
-      const contextualContent = optionalContext ? optionalContext + '\r\n' + content : content;
 
       // Get the response from Ollama
       //console.log('contextual', contextualContent);
-      const ollamaResponse = await this.ollama.getResponse(message.channel.id, message.author.displayName, contextualContent);
+      const input: ChatMessageInput = {
+        channelId: message.channel.id,
+        username: message.author.displayName,
+        message: content,
+        context: optionalContext
+      }
+      const ollamaResponse = await this.ollama.getResponse(input);
 
       // Send the reply
       return this.sendReply(message, ollamaResponse);

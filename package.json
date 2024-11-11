@@ -4,9 +4,9 @@
   "scripts": {
     "start:prod": "node dist/index.js",
     "build:prod": "tsup src/index.ts --minify",
-    "clean:build": "rimraf dist/index.ts",
-    "build:watch": "npm run clean:build && tsc-watch --noEmit --onSuccess \"npm run start-server\"",
-    "start-server": "tsx src/index.ts",
+    "clean:build": "rimraf dist",
+    "build:watch": "npm run clean:build && tsc-watch --onSuccess \"npm run start-server\"",
+    "start-server": "tsx dist/index.js",
     "dev": "npm run build:watch"
   },
   "author": "",

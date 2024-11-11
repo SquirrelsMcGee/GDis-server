@@ -5,7 +5,7 @@ export enum LogLevel {
 }
 
 export class Logger {
-  public static Level: LogLevel = LogLevel.None;
+  public static Level: LogLevel = LogLevel.All;
 
   public static error(className: string, msg: any, ...optionalParams: any[]): void {
     if (Logger.Level < LogLevel.Errors)

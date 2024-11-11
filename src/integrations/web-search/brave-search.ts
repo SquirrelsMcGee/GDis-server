@@ -1,14 +1,15 @@
 
 import { first, map, Observable } from "rxjs";
-import { config } from "../config";
-import { HttpService } from "../helpers/http";
-import { ISearchResult, IWebSearchApiResponse } from "../lib/interfaces/web-search-api-response";
-import { INamed } from "../lib/named-class";
+import { ENV_CONFIG } from "../../config";
+import { HttpService } from "../../helpers/http";
+import { ISearchResult, IWebSearchApiResponse } from "../../lib/interfaces/web-search-api-response";
+import { INamed } from "../../lib/named-class";
+
 
 export class BraveSearch implements INamed {
   public readonly name: string = 'BraveSearch';
 
-  private readonly apiKey = config.BRAVE_API_KEY;
+  private readonly apiKey = ENV_CONFIG.BRAVE_API_KEY;
 
   private readonly http: HttpService;
 

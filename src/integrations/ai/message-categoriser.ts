@@ -1,5 +1,7 @@
 import { Ollama, ResponseData } from "./ollama";
-import { BasicMessagePrompt, CategoriserConversationPrompt, ChatMessageInput, IPromptProvider } from "./prompt-provider";
+import { ChatMessageInput } from "./prompt-providers/discord-chat";
+import { BasicMessagePrompt, CategoriserConversationPrompt } from "./prompt-providers/message-categoriser";
+import { IPromptProvider } from "./prompt-providers/prompt-provider";
 
 export class OllamaCategoriser extends Ollama {
   private readonly contextKey = Date.now().toString();
