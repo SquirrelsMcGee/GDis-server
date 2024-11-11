@@ -2,9 +2,12 @@
   "name": "gdis-server",
   "version": "1.0.0",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "node dist/index.js",
-    "build": "tsup src/index.ts --minify"
+    "start:prod": "node dist/index.js",
+    "build:prod": "tsup src/index.ts --minify",
+    "clean:build": "rimraf dist/.built",
+    "build:watch": "npm run clean:build && tsc-watch --noEmit --onSuccess \"npx touch-cli dist/.built\"",
+    "run:watch": "wait-on dist/.built && tsx watch src/index.ts",
+    "dev": "concurrently --kill-others --prefix \"[{name}]\" -n \"build, run \" --prefix-colors \"blue.bold,green.bold\" \"npm run build:watch\" \"npm run run:watch\""
   },
   "author": "",
   "license": "ISC",
@@ -26,9 +29,14 @@
     "@types/express-fileupload": "^1.5.1",
     "@types/lodash": "^4.17.13",
     "@types/md5": "^2.3.5",
+    "concurrently": "^9.1.0",
     "md5": "^2.3.0",
+    "rimraf": "^6.0.1",
+    "touch-cli": "^0.0.1",
+    "tsc-watch": "^6.2.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "wait-on": "^8.0.1"
   }
 }
