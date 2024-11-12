@@ -2,12 +2,12 @@
   "name": "gdis-server",
   "version": "1.0.0",
   "scripts": {
-    "start:prod": "node dist/index.js",
-    "build:prod": "tsup src/index.ts --minify",
+    "build": "npm run clean:build && tsup src/index.ts --minify",
+    "start": "node dist/index.js",
+    "dev": "npm run build:watch",
     "clean:build": "rimraf dist",
     "build:watch": "npm run clean:build && tsc-watch --onSuccess \"npm run start-server\"",
-    "start-server": "tsx dist/index.js",
-    "dev": "npm run build:watch"
+    "start-server": "tsx dist/index.js"
   },
   "author": "",
   "license": "ISC",
@@ -19,25 +19,18 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "express-fileupload": "^1.5.1",
-    "lodash": "^4.17.21",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "ts-node": "^10.9.2"
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/express-fileupload": "^1.5.1",
-    "@types/lodash": "^4.17.13",
     "@types/md5": "^2.3.5",
-    "concurrently": "^9.1.0",
     "md5": "^2.3.0",
     "rimraf": "^6.0.1",
-    "touch-cli": "^0.0.1",
     "tsc-watch": "^6.2.0",
     "tsup": "^8.3.5",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3",
-    "wait-on": "^8.0.1"
+    "typescript": "^5.6.3"
   }
 }

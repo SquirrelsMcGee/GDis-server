@@ -1,9 +1,8 @@
 import { catchError, lastValueFrom, map, Observable, tap } from 'rxjs';
-
-import { HttpService } from '../../helpers/http';
 import { Logger } from '../../helpers/logger';
 import { PromiseFactory } from '../../helpers/promise-factory';
 import { INamed } from '../../lib/named-class';
+import { HttpService } from '../http';
 import { ChatMessageInput, DiscordChatMessagePrompt, DiscordConversationPrompt } from './prompt-providers/discord-chat';
 import { IPromptProvider } from './prompt-providers/prompt-provider';
 
@@ -57,7 +56,7 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
     return lastValueFrom(this.sendPrompt(prompt, context)
       .pipe(
         tap(ollamaResponse => {
-          Logger.log(this.name, 'Received Response', ollamaResponse.response);
+          Logger.log(this.name, 'Received Response', ollamaResponse.response.slice(0, 100), '...');
           this.setContext(contextKey, ollamaResponse);
         }),
         map(ollamaResponse => ollamaResponse.response),

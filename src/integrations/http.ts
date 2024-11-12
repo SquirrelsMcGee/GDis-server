@@ -1,8 +1,8 @@
 import axios, { AxiosResponse, RawAxiosRequestHeaders } from "axios";
 import { first, Observable, Subject } from "rxjs";
+import { Logger } from "../helpers/logger";
+import { PromiseFactory } from "../helpers/promise-factory";
 import { INamed } from "../lib/named-class";
-import { Logger } from "./logger";
-import { PromiseFactory } from "./promise-factory";
 
 
 export class HttpService implements INamed {

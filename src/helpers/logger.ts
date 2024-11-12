@@ -11,13 +11,13 @@ export class Logger {
     if (Logger.Level < LogLevel.Errors)
       return;
 
-    console.error(`[ERROR] [${className}] - ${[msg, optionalParams].join(' | ')}`);
+    console.error(`\x1b[31m [ERROR] [${className}] - ${[msg, optionalParams].join(' | ')} \x1b[0m`);
   }
 
   public static log(className: string, msg: any, ...optionalParams: any[]): void {
     if (Logger.Level < LogLevel.All)
       return;
 
-    console.log(`[INFO] [${className}] - ${[msg, optionalParams].join(' | ')}`);
+    console.log(`\x1b[33m [INFO] [${className}] - ${[msg, optionalParams].join(' | ')} \x1b[0m`);
   }
 }

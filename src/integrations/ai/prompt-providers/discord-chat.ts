@@ -44,11 +44,13 @@ export class DiscordChatMessagePrompt implements IPromptProvider<ChatMessageInpu
     const msg = values.message;
 
     const contextPre = values.context ?
-      'You may use the following information in your response. Include any URLs and wrap them in ` characters.\r\r'
-      + values.context + '\r\n'
+      `For reference, the current time is ${Date.now().toLocaleString()}.
+      'You will use the following information in your response. You can include any URLs.\r\r`
+      + values.context
       : '';
 
-    return `${contextPre}${username}:${msg}
+    return `${contextPre}
+${username}:${msg}
 ${this.postPrompt.provide()}`
   }
 }

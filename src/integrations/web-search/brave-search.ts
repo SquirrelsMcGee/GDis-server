@@ -1,9 +1,9 @@
 
 import { first, map, Observable } from "rxjs";
 import { ENV_CONFIG } from "../../config";
-import { HttpService } from "../../helpers/http";
 import { ISearchResult, IWebSearchApiResponse } from "../../lib/interfaces/web-search-api-response";
 import { INamed } from "../../lib/named-class";
+import { HttpService } from "../http";
 
 
 export class BraveSearch implements INamed {

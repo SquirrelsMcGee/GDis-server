@@ -5,6 +5,9 @@ import { INamed } from "../lib/named-class";
 
 export type Precondition = (...args: unknown[]) => Promise<boolean>;
 
+/**
+ * TODO: ideally each condition is actually it's own class that can spit out it's own name
+ */
 export type PreconditionInfo = {
   name: string;
   execute: Precondition;
@@ -23,9 +26,9 @@ export class ClientActionPreconditions implements INamed {
     return Promise.resolve(!(!message.thread && message.system));
   }
 
-  // Precondition method to check if the author of the message is not the bot itself
-  async authorIsNotMe(message: Message): Promise<boolean> {
-    return Promise.resolve<boolean>(message.author.id !== this.client.user?.id);
+  // Precondition method to check if the author of the message is the bot itself
+  async authorIsMe(message: Message): Promise<boolean> {
+    return Promise.resolve<boolean>(message.author.id === this.client.user?.id);
   }
 
   // Precondition to check if the message is in a thread or direct message channel
@@ -51,7 +54,10 @@ export class ClientActionPreconditions implements INamed {
     return Promise.resolve(PermissionCheck.hasGuildChannelPermissions(channel, flags));
   }
 
-
+  async isThread(message: Message): Promise<boolean> {
+    const isValid = await this.isChannelType(message, [ChannelType.PrivateThread]);
+    return Promise.resolve(isValid);
+  }
 
 
   /** Internal checks */
@@ -64,11 +70,6 @@ export class ClientActionPreconditions implements INamed {
   private async isMention(message: Message): Promise<boolean> {
     const isMention = message.mentions.users.map(u => u.id).includes(this.client.user?.id ?? '');
     return Promise.resolve(isMention);
-  }
-
-  private async isThread(message: Message): Promise<boolean> {
-    const isValid = await this.isChannelType(message, [ChannelType.PrivateThread]);
-    return Promise.resolve(isValid);
   }
 
   private async isReply(message: Message): Promise<boolean> {

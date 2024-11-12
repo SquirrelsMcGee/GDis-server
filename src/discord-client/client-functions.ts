@@ -1,13 +1,17 @@
 import { ChannelType, Client, GuildChannel, Message, PermissionsBitField, TextChannel } from "discord.js";
+import { lastValueFrom } from "rxjs";
+import { ENV_CONFIG } from "../config";
 import { Logger } from "../helpers/logger";
 import { PromiseFactory } from "../helpers/promise-factory";
+import { sleep } from "../helpers/sleep";
+import { splitStringIntoChunks } from "../helpers/string-functions";
 import { OllamaCategoriser } from "../integrations/ai/message-categoriser";
 import { Ollama } from "../integrations/ai/ollama";
 import { ChatMessageInput } from "../integrations/ai/prompt-providers/discord-chat";
 import { SearchSummarizer } from "../integrations/ai/search-summarizer";
 import { BraveSearch } from "../integrations/web-search/brave-search";
+import { ISearchResult } from "../lib/interfaces/web-search-api-response";
 import { INamed } from "../lib/named-class";
-import { sleep } from "../lib/sleep";
 import { runWithPreconditions } from "./precondition-decorator";
 import { ClientActionPreconditions, PreconditionInfo } from "./preconditions";
 
@@ -39,30 +43,31 @@ export class ClientFunctions implements INamed {
       if (this.cacheMessages)
         this.messageCache.push(message);
 
-      //const category = await this.categoriseMessage(message);
-      //console.log('category', category);
-      //if (category.includes('[Web Search]') && await this.authorIsNotMe(message)) {
-      //  Logger.log(this.name, 'Using Websearch for this request');
-      //  const searchTerm = category.slice('[Web Search]'.length);
-      //
-      //  this.braveSearch.search(searchTerm)
-      //    .pipe(first())
-      //    .subscribe(async (results): Promise<void> => {
-      //      if (results.length === 0)
-      //        return;
-      //
-      //      const summary = await this.summariser.getResponse(results);
-      //      await this.trySendLLMResponse(message, summary);
-      //    });
-      //}
-      //else {
-      await this.trySendLLMResponse(message);
-      //}
+      // If the message is from me, stop
+      if (await this.preconditions.authorIsMe(message))
+        return Promise.resolve();
 
+      const category = await this.categoriseMessage(message);
+      const isWebSearch = category.includes('[Web Search]');
+      if (isWebSearch && ENV_CONFIG.ENABLE_WEB_SEARCH) {
+        const webResults = await this.doWebSearch(category);
+        const summary = await this.summariser.getResponse(webResults);
+        await this.trySendLLMResponse(message, summary);
+      }
+      else
+        await this.trySendLLMResponse(message);
     }
     catch (error) {
-      // Logger.error(this.name, error);
+      Logger.error(this.name, error);
     }
+  }
+
+  private async doWebSearch(category: string): Promise<ISearchResult[]> {
+    Logger.log(this.name, 'Using Websearch for this request');
+
+    const searchTerm = category.slice('[Web Search]'.length);
+
+    return lastValueFrom(this.braveSearch.search(searchTerm));
   }
 
   private async categoriseMessage(message: Message): Promise<string> {
@@ -89,7 +94,6 @@ export class ClientFunctions implements INamed {
     // Define conditions for this action
     const preconditions: PreconditionInfo[] = [
       { name: 'isNotSystemMessage', execute: () => this.preconditions.isNotSystemMessage(message) },
-      { name: 'authorIsNotMe', execute: () => this.preconditions.authorIsNotMe(message) },
       { name: 'isThreadOrDirect', execute: () => this.preconditions.isThreadOrDirect(message) },
       { name: 'isSandboxed', execute: () => this.preconditions.isSandboxed(message) }
     ];
@@ -152,8 +156,30 @@ export class ClientFunctions implements INamed {
       }
     ]
 
+    const isThread = await this.preconditions.isThread(replyTo);
+
+    const sendText = async (txt: string) => {
+      return isThread
+        ? (replyTo.channel as TextChannel).send(txt)
+        : replyTo.reply(txt);
+    };
+
+    const sendMultiple = async (txts: string[]) => {
+      for (let txt of txts.slice(0, txts.length - 1)) {
+        await sleep(500);
+        await sendText(txt);
+      }
+
+      return sendText(txts.pop() ?? '');
+    }
+
     return runWithPreconditions(
-      () => replyTo.reply(content),
+      () => {
+        if (content.length >= 2000)
+          return sendMultiple(splitStringIntoChunks(content, 1000))
+        else
+          return sendText(content);
+      },
       preconditions
     );
 
