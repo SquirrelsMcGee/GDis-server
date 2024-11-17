@@ -1,5 +1,4 @@
 import { ChannelType, Client, GuildChannel, Message } from "discord.js";
-import { Logger } from "../helpers/logger";
 import { PermissionCheck } from "../helpers/permission-checker";
 import { INamed } from "../lib/named-class";
 
@@ -84,7 +83,7 @@ export class ClientActionPreconditions implements INamed {
           return Promise.resolve(true);
       }
       catch (error) {
-        Logger.error(this.name, 'fn isReply', error);
+        //Loggererror(this.name, 'fn isReply', error);
       }
       finally {
         return Promise.resolve(false);

@@ -1,7 +1,9 @@
 import { Channel, Client, GatewayIntentBits, Guild, Message, TextChannel } from "discord.js";
+import { inject, injectable } from "inversify";
 import { ENV_CONFIG } from "../config";
 import { Logger } from "../helpers/logger";
 import { INamed } from "../lib/named-class";
+import { TYPES } from "../types";
 import { ClientFunctions } from "./client-functions";
 
 
@@ -11,6 +13,7 @@ export type FileUploadData = {
   description?: string;
 };
 
+@injectable()
 export class ClientManager implements INamed {
   public readonly name: string = 'ClientManager';
 
@@ -20,7 +23,12 @@ export class ClientManager implements INamed {
 
   private readonly functions: ClientFunctions;
 
-  constructor() {
+
+  constructor(
+    @inject(TYPES.Logger) private readonly logger: Logger
+  ) {
+    this.logger.setInfo(this.name);
+
     this.client = new Client({
       intents: [
         GatewayIntentBits.Guilds,
@@ -36,7 +44,7 @@ export class ClientManager implements INamed {
     this.functions = new ClientFunctions(this.client, true);
 
     this.client.once("ready", (client) => {
-      Logger.log(this.name, 'Discord bot is ready', client.user.username);
+      this.logger.info(`Logged in as: ${client.user.username}`);
     });
 
     this.client.login(ENV_CONFIG.DISCORD_TOKEN);

@@ -1,3 +1,4 @@
+import { FatalException } from "../../../lib/custom-error";
 import { ISearchResult, SearchResult } from "../../../lib/interfaces/web-search-api-response";
 import { IPromptProvider } from "./prompt-provider";
 
@@ -19,7 +20,7 @@ export class WebSearchSummaryMessagePrompt implements IPromptProvider<ISearchRes
 
   public provide(values?: ISearchResult[]): string {
     if (!values)
-      throw 'missing argument for prompt, values';
+      throw new FatalException('Cannot generate prompt, argument values not provided');
 
     const contextObjects = values.map(SearchResult.fromObject).map(r => r.toString()).join('\r\n');
 

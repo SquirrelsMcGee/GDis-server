@@ -1,3 +1,4 @@
+import { FatalException } from "../../../lib/custom-error";
 import { ChatMessageInput } from "./discord-chat";
 import { IPromptProvider } from "./prompt-provider";
 
@@ -14,7 +15,8 @@ Your response will be used in an automated process so only respond with these op
 export class BasicMessagePrompt implements IPromptProvider<ChatMessageInput> {
   provide(values?: ChatMessageInput): string {
     if (!values)
-      throw 'missing argument for prompt, values';
+      throw new FatalException('Cannot generate prompt, argument values not provided');
+
     return values.message;
   }
 }

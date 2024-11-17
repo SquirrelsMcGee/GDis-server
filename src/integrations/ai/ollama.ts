@@ -1,5 +1,4 @@
 import { catchError, lastValueFrom, map, Observable, tap } from 'rxjs';
-import { Logger } from '../../helpers/logger';
 import { PromiseFactory } from '../../helpers/promise-factory';
 import { INamed } from '../../lib/named-class';
 import { HttpService } from '../http';
@@ -56,12 +55,12 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
     return lastValueFrom(this.sendPrompt(prompt, context)
       .pipe(
         tap(ollamaResponse => {
-          Logger.log(this.name, 'Received Response', ollamaResponse.response.slice(0, 100), '...');
+          //Loggerlog(this.name, 'Received Response', ollamaResponse.response.slice(0, 100), '...');
           this.setContext(contextKey, ollamaResponse);
         }),
         map(ollamaResponse => ollamaResponse.response),
         catchError(error => {
-          Logger.error(this.name, 'fn getResponse', error);
+          //Loggererror(this.name, 'fn getResponse', error);
           return PromiseFactory.throwErrorObservable(this.name, ['fn sendPostRequest', error]);
         })
       ));
@@ -85,7 +84,7 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
       context: context
     };
 
-    //Logger.log(this.name, 'Sending Prompt to ollama', postBody);
+    ////Loggerlog(this.name, 'Sending Prompt to ollama', postBody);
 
     return this.http.post<ResponseData>('api/generate', postBody, undefined, { 'Content-Type': 'application/json' });
   }

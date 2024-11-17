@@ -19,10 +19,14 @@ export class ApiManager implements INamed {
   private readonly map: Map<string, (req: Request, res: Response) => Promise<void>>;
   private readonly guildsApi: GuildsApi;
 
+  private readonly logger = new Logger();
+
   constructor(
     private readonly port: number,
     private readonly clientManager: ClientManager
   ) {
+    this.logger.setInfo(this.name);
+
     this.guildsApi = new GuildsApi(this.clientManager);
     this.app = express();
 
@@ -57,7 +61,7 @@ export class ApiManager implements INamed {
 
   public listen(): void {
     this.app.listen(this.port, () => {
-      Logger.log(this.name, 'REST API is listening on port', this.port);
+      this.logger.info('REST API is listening on port', this.port);
     });
   }
 
@@ -136,8 +140,6 @@ export class ApiManager implements INamed {
 
     try {
       const message = await this.clientManager.sendMessage(channelId, content, files);
-      Logger.log('Sent message', message.id)
-
       // Send the message back to the client
       res.send(message);
 
@@ -147,9 +149,9 @@ export class ApiManager implements INamed {
       // Return
       return Promise.resolve();
     }
-    catch (err) {
-      Logger.error(this.name, 'fn postMessage', err)
-      return PromiseFactory.reject(this.name, ['fn postMessage', 'Failed to postMessage', err]);
+    catch (error) {
+      this.logger.error('Failed to post Message', error);
+      return PromiseFactory.reject(this.name, ['fn postMessage', 'Failed to postMessage', error]);
     }
   }
 

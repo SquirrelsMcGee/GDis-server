@@ -2,8 +2,12 @@
   "compilerOptions": {
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "target": "ES2020",
+    "lib": [
+      "es6"
+    ],
     "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2020",
     "rootDir": "./src",
     "outDir": "./dist",
     "removeComments": true,
@@ -12,6 +16,13 @@
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "strictNullChecks": true,
-    "skipLibCheck": true
-  }
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

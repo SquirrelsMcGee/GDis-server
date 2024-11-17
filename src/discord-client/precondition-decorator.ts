@@ -1,6 +1,7 @@
+import { NonFatalException } from "../lib/custom-error";
 import { PreconditionInfo } from "./preconditions";
 
-type AnyArgs<Returntype> = (...args: unknown[]) => Promise<Returntype>
+export type AnyArgs<Returntype> = (...args: unknown[]) => Promise<Returntype>
 
 /**
  * Decorator function to assert a set of preconditions before running a command
@@ -15,11 +16,10 @@ export async function runWithPreconditions<ReturnType, T extends AnyArgs<ReturnT
     for (const condition of conditions) {
       const result = await condition.execute(...args);
       if (!result)
-        throw new Error(`Precondition failed: ${condition.name}`);
+        throw new NonFatalException(`Precondition failed: ${condition.name}`);
     }
 
     // Apply `args` to the `method` with the correct `this` context
     return method.apply(this, args);
-
   }.apply(this);
 }

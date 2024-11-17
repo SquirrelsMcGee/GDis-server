@@ -1,27 +1,32 @@
-import axios, { AxiosResponse, RawAxiosRequestHeaders } from "axios";
+import axios, { AxiosResponse, RawAxiosRequestHeaders, ResponseType } from "axios";
 import { first, Observable, Subject } from "rxjs";
 import { Logger } from "../helpers/logger";
 import { PromiseFactory } from "../helpers/promise-factory";
+import { Exception, FatalException } from "../lib/custom-error";
 import { INamed } from "../lib/named-class";
 
 
 export class HttpService implements INamed {
   public readonly name: string = 'HttpService';
 
+  private readonly logger = new Logger();
+
   constructor(
     private readonly host: string,
     private readonly port?: string
   ) {
     if (!host)
-      throw 'HttpService failed to construct, hostname not provided';
+      throw new FatalException('HttpService failed to construct, hostname not provided');
+
+    this.logger.setInfo(this.name);
   }
 
-  public post<T>(path: string, body?: unknown, params?: URLSearchParams, headers?: RawAxiosRequestHeaders): Observable<T> {
+  public post<T>(path: string, body?: unknown, params?: URLSearchParams, headers?: RawAxiosRequestHeaders, responseType?: ResponseType): Observable<T> {
     // Create observable for return
     const reqObservable = new Subject<T>();
 
     // Send the POST request
-    axios.post(this.getUrl(path), body, { params, headers })
+    axios.post(this.getUrl(path), body, { params, headers, responseType })
       // Handle the response
       .then(res => this.handleResult<T>(res))
       // Update the observable
@@ -54,11 +59,15 @@ export class HttpService implements INamed {
     if (response.status >= 200 && response.status <= 299)
       return response.data as T;
     else
-      throw response.statusText;
+      throw new FatalException(response.statusText);
   }
 
-  private handleError<T>(method: string, error: unknown): Observable<T> {
-    Logger.error(this.name, method, error);
+  private handleError<T>(method: string, error: Exception): Observable<T> {
+    if (error.isFatal)
+      this.logger.error(error.message);
+    else
+      this.logger.warn(error.message);
+
     return PromiseFactory.throwErrorObservable(this.name, [method, error]);
   }
 

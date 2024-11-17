@@ -1,6 +1,7 @@
 import { ChannelType, Client, GuildChannel, Message, PermissionsBitField, TextChannel } from "discord.js";
+
 import { lastValueFrom } from "rxjs";
-import { ENV_CONFIG } from "../config";
+
 import { Logger } from "../helpers/logger";
 import { PromiseFactory } from "../helpers/promise-factory";
 import { sleep } from "../helpers/sleep";
@@ -9,33 +10,47 @@ import { OllamaCategoriser } from "../integrations/ai/message-categoriser";
 import { Ollama } from "../integrations/ai/ollama";
 import { ChatMessageInput } from "../integrations/ai/prompt-providers/discord-chat";
 import { SearchSummarizer } from "../integrations/ai/search-summarizer";
+import { CoquiTTS } from "../integrations/tts/coqui";
 import { BraveSearch } from "../integrations/web-search/brave-search";
+import { Exception } from "../lib/custom-error";
 import { ISearchResult } from "../lib/interfaces/web-search-api-response";
 import { INamed } from "../lib/named-class";
-import { runWithPreconditions } from "./precondition-decorator";
+import { ClientVCManager } from "./client-voice";
+import { AnyArgs, runWithPreconditions } from "./precondition-decorator";
 import { ClientActionPreconditions, PreconditionInfo } from "./preconditions";
-
 
 export class ClientFunctions implements INamed {
   public readonly name: string = 'ClientFunctions';
 
   private messageCache: Message[] = [];
 
+  // Logging
+  private readonly logger = new Logger();
+
+  // Integrations
+  private readonly braveSearch: BraveSearch = new BraveSearch();
+
+  // AI Models
   private readonly ollama = new Ollama();
   private readonly categoriser = new OllamaCategoriser();
   private readonly summariser = new SearchSummarizer();
 
+  private readonly clientVoice: ClientVCManager;
+
   private readonly preconditions: ClientActionPreconditions;
-  private readonly braveSearch: BraveSearch = new BraveSearch();
 
   constructor(
     private readonly client: Client,
     private readonly cacheMessages: boolean
   ) {
+    this.logger.setInfo(this.name);
+
     this.preconditions = new ClientActionPreconditions(
       ['673908382809325620', '820763406389870642'],
       this.client
     );
+
+    this.clientVoice = new ClientVCManager(new CoquiTTS());
   }
 
   public async onMessage(message: Message) {
@@ -45,25 +60,33 @@ export class ClientFunctions implements INamed {
 
       // If the message is from me, stop
       if (await this.preconditions.authorIsMe(message))
-        return Promise.resolve();
+        return Promise.resolve('Author was me, ignoring message');
 
-      const category = await this.categoriseMessage(message);
-      const isWebSearch = category.includes('[Web Search]');
-      if (isWebSearch && ENV_CONFIG.ENABLE_WEB_SEARCH) {
-        const webResults = await this.doWebSearch(category);
-        const summary = await this.summariser.getResponse(webResults);
-        await this.trySendLLMResponse(message, summary);
-      }
-      else
-        await this.trySendLLMResponse(message);
+      // const category = await this.categoriseMessage(message);
+      // const isWebSearch = category.includes('[Web Search]');
+      // if (isWebSearch && ENV_CONFIG.ENABLE_WEB_SEARCH) {
+      //   const webResults = await this.doWebSearch(category);
+      //   const summary = await this.summariser.getResponse(webResults);
+      //   await this.trySendLLMResponse(message, summary);
+      // }
+      // else
+      const sent = await this.trySendLLMResponse(message);
+      const contentForSpeech = sent.cleanContent;
+      await this.sayTTS(message, contentForSpeech);
     }
-    catch (error) {
-      Logger.error(this.name, error);
+    catch (error: unknown) {
+      const exception = error as Exception;
+      if (exception.isFatal === undefined)
+        this.logger.error(error as string);
+      else if (exception.isFatal)
+        this.logger.error(exception.message);
+      else
+        this.logger.warn('Caught in onMessage', exception.message);
     }
   }
 
   private async doWebSearch(category: string): Promise<ISearchResult[]> {
-    Logger.log(this.name, 'Using Websearch for this request');
+    this.logger.info('Using websearch for this request');
 
     const searchTerm = category.slice('[Web Search]'.length);
 
@@ -80,12 +103,12 @@ export class ClientFunctions implements INamed {
         username: message.author.displayName,
         message: content
       }
-      const ollamaResponse = await this.categoriser.getResponse(input);
+      const ollamaResponse = (await this.categoriser.getResponse(input)).toLocaleLowerCase();
 
       return Promise.resolve(ollamaResponse);
     }
     catch (error) {
-      Logger.error(this.name, 'fn categoriseMessage', error);
+      this.logger.error('Caught in categoriseMessage', error);
       return PromiseFactory.reject(this.name, ['fn categoriseMessage', error]);
     }
   }
@@ -99,15 +122,19 @@ export class ClientFunctions implements INamed {
     ];
 
     try {
-      return runWithPreconditions(
+      return runWithPreconditions<Message, AnyArgs<Message>>(
         this.sendLLMResponse.bind(this, message, optionalContext),
         preconditions
       );
     }
     catch (error) {
-      Logger.error(this.name, 'fn sendLLMResponse', error);
+      this.logger.error('Caught in trySendLLMResponse', error);
       return PromiseFactory.reject(this.name, ['fn sendLLMResponse', error]);
     }
+  }
+
+  private async sayTTS(original: Message, myReplyContent: string) {
+    return this.clientVoice.doVoiceInteraction(original, () => Promise.resolve(myReplyContent));
   }
 
   private async sendLLMResponse(message: Message, optionalContext?: string) {
@@ -131,7 +158,7 @@ export class ClientFunctions implements INamed {
     const ollamaResponse = await this.ollama.getResponse(input);
 
     // Wait a second to make the response a bit nicer :)
-    await sleep(1000);
+    await sleep(500);
 
     // Send the reply
     return this.sendReply(message, ollamaResponse);
