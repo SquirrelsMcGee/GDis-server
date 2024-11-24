@@ -1,5 +1,6 @@
 import { catchError, lastValueFrom, map, Observable, tap } from 'rxjs';
 import { ENV_CONFIG } from '../../config';
+import { Logger } from '../../helpers/logger';
 import { PromiseFactory } from '../../helpers/promise-factory';
 import { INamed } from '../../lib/named-class';
 import { HttpService } from '../http';
@@ -31,6 +32,7 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
   protected readonly conversationProvider: IPromptProvider<unknown>;
   protected readonly chatMessageProvider: IPromptProvider<ResponseInput>;
 
+  protected readonly logger = new Logger();
 
   constructor(name: string,
     conversationProvider: IPromptProvider<unknown>,
@@ -41,6 +43,8 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
     this.chatMessageProvider = chatMessageProvider;
 
     this.http = new HttpService(ENV_CONFIG.OLLAMA_SERVER_URL, ENV_CONFIG.OLLAMA_SERVER_PORT);
+
+    this.logger.setInfo(this.name);
   }
 
   public async getResponse(input: ResponseInput): Promise<string> {

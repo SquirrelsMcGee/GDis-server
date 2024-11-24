@@ -5,6 +5,8 @@ import { ENV_CONFIG } from "../../config";
 import { HttpService } from "../http";
 import { ISpeechToTextProvider } from "./stt-provider";
 
+import FormData from 'form-data';
+
 /**
  * This currently relies on a custom Whisper Api developed by me (Not available publically yet)
  * The api has 1 endpoint POST/transcribe

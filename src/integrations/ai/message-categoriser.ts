@@ -1,4 +1,4 @@
-import { Logger } from "../../helpers/logger";
+import { ENV_CONFIG } from "../../config";
 import { INamed } from "../../lib/named-class";
 import { Ollama, ResponseData } from "./ollama";
 import { ChatMessageInput } from "./prompt-providers/discord-chat";
@@ -8,23 +8,23 @@ import { IPromptProvider } from "./prompt-providers/prompt-provider";
 export class OllamaCategoriser extends Ollama implements INamed {
   public readonly name: string = 'MessageCategoriser';
 
-  private readonly contextKey = Date.now().toString();
+  protected readonly conversationProvider: IPromptProvider<unknown> = new CategoriserConversationPrompt();
+  protected readonly chatMessageProvider: IPromptProvider<ChatMessageInput> = new BasicMessagePrompt();
 
-  private logger: Logger = new Logger();
+  private readonly contextKey = Date.now().toString();
 
   constructor() {
     super();
-    this.logger.setInfo(this.name);
   }
 
   public override async getResponse(input: ChatMessageInput): Promise<string> {
+    if (!ENV_CONFIG.ENABLE_WEB_SEARCH)
+      return Promise.resolve('[Chat]');
+
     const r = await super.getResponse(input);
     this.logger.info(r);
     return Promise.resolve(r);
   }
-
-  protected readonly conversationProvider: IPromptProvider<unknown> = new CategoriserConversationPrompt();
-  protected readonly chatMessageProvider: IPromptProvider<ChatMessageInput> = new BasicMessagePrompt();
 
   protected override getContext(_: string): string | undefined {
     return this.contextMap.get(this.contextKey);

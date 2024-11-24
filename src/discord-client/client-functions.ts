@@ -10,7 +10,7 @@ import { splitStringIntoChunks } from "../helpers/string-functions";
 import { OllamaCategoriser } from "../integrations/ai/message-categoriser";
 import { Ollama } from "../integrations/ai/ollama";
 import { ChatMessageInput } from "../integrations/ai/prompt-providers/discord-chat";
-import { SearchSummarizer } from "../integrations/ai/search-summarizer";
+import { SearchSummariser } from "../integrations/ai/search-summariser";
 import { CoquiTTS } from "../integrations/tts/coqui";
 import { BraveSearch } from "../integrations/web-search/brave-search";
 import { Exception } from "../lib/custom-error";
@@ -34,7 +34,7 @@ export class ClientFunctions implements INamed {
   // AI Models
   private readonly ollama = new Ollama();
   private readonly categoriser = new OllamaCategoriser();
-  private readonly summariser = new SearchSummarizer();
+  private readonly searchSummariser = new SearchSummariser();
 
   private readonly clientVoice: ClientVoiceController;
 
@@ -56,43 +56,40 @@ export class ClientFunctions implements INamed {
     this.clientVoice.OnAudioInteraction.subscribe(async (interaction) => {
 
       if (ENV_CONFIG.ENABLE_WEB_SEARCH) {
-        const categoryInput: ChatMessageInput = {
-          channelId: interaction.channel.id,
-          username: (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
-          message: interaction.metadata.transcript
-        }
+        const categoryInput = this.getChatMessageInputRaw(
+          interaction.channel.id,
+          (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
+          interaction.metadata.transcript
+        );
+
         const category = await this.categoriser.getResponse(categoryInput);
         this.logger.info(category);
         const isWebSearch = category.toLocaleLowerCase().includes('[web search]');
 
         let summary: string | undefined;
-        // test
 
         if (isWebSearch) {
           const webResults = await this.doWebSearch(category);
-          summary = await this.summariser.getResponse(webResults);
+          summary = await this.searchSummariser.getResponse(webResults);
 
-
-          const responseInput: ChatMessageInput = {
-            channelId: interaction.channel.id,
-            username: (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
-            message: interaction.metadata.transcript,
-            context: summary
-          }
-
+          const responseInput = this.getChatMessageInputRaw(
+            interaction.channel.id,
+            (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
+            interaction.metadata.transcript,
+            summary
+          );
 
           this.logger.info('summary', summary);
-
           const response = await this.ollama.getResponse(responseInput);
           await this.sayTTS(interaction.guild, interaction.channel, response);
         }
       }
       else {
-        const responseInput: ChatMessageInput = {
-          channelId: interaction.channel.id,
-          username: (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
-          message: interaction.metadata.transcript
-        }
+        const responseInput = this.getChatMessageInputRaw(
+          interaction.channel.id,
+          (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
+          interaction.metadata.transcript
+        );
         const response = await this.ollama.getResponse(responseInput);
         await this.sayTTS(interaction.guild, interaction.channel, response);
       }
@@ -120,10 +117,8 @@ export class ClientFunctions implements INamed {
       this.logger.info('msg isWebSearch', isWebSearch, category);
       if (isWebSearch && ENV_CONFIG.ENABLE_WEB_SEARCH) {
         const webResults = await this.doWebSearch(category);
-        const summary = await this.summariser.getResponse(webResults);
-        // console.log(summary);
+        const summary = await this.searchSummariser.getResponse(webResults);
         await this.reply(message, summary);
-
       }
       else
         await this.reply(message);
@@ -159,14 +154,7 @@ export class ClientFunctions implements INamed {
 
   private async categoriseMessage(message: Message): Promise<string> {
     try {
-      // Remove the bot mention from the message
-      const content = message.cleanContent.replace(`@BotsByDre`, '');
-      // Get the response from Ollama
-      const input: ChatMessageInput = {
-        channelId: message.channel.id,
-        username: message.author.displayName,
-        message: content
-      }
+      const input = this.getChatMessageInput(message);
       const ollamaResponse = (await this.categoriser.getResponse(input)).toLocaleLowerCase();
 
       return Promise.resolve(ollamaResponse);
@@ -207,16 +195,8 @@ export class ClientFunctions implements INamed {
     // Start typing...
     await channel.sendTyping();
 
-    // Remove the bot mention from the message
-    const content = message.cleanContent.replace(`@BotsByDre`, '');
-
     // Get the response from Ollama
-    const input: ChatMessageInput = {
-      channelId: message.channel.id,
-      username: message.author.displayName,
-      message: content,
-      context: optionalContext
-    }
+    const input = this.getChatMessageInput(message, optionalContext);
 
     // Get the ai generated content
     const ollamaResponse = await this.ollama.getResponse(input);
@@ -227,7 +207,6 @@ export class ClientFunctions implements INamed {
     // Send the reply
     return this.sendReply(message, ollamaResponse);
   }
-
 
   public async sendReply(replyTo: Message, content: string): Promise<Message> {
     const preconditions: PreconditionInfo[] = [
@@ -274,5 +253,27 @@ export class ClientFunctions implements INamed {
       preconditions
     );
 
+  }
+
+
+  private getChatMessageInput(message: Message, context?: string) {
+    return this.getChatMessageInputRaw(
+      message.channel.id,
+      message.member?.nickname ?? message.author.displayName,
+      message.cleanContent,
+      context
+    );
+  }
+
+  private getChatMessageInputRaw(channelId: string, username: string, message: string, context?: string) {
+    const input: ChatMessageInput = {
+      channelId: channelId,
+      // Get the user's nickname or displayname
+      username: username,
+      // Remove the bot mention from the message
+      message: message.replace(`@BotsByDre`, ''),
+      context: context
+    };
+    return input;
   }
 }
