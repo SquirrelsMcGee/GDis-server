@@ -1,7 +1,8 @@
-import { ChannelType, Client, GuildChannel, Message, PermissionsBitField, TextChannel } from "discord.js";
+import { ChannelType, Client, Guild, GuildChannel, Message, PermissionsBitField, TextChannel, VoiceBasedChannel } from "discord.js";
 
 import { lastValueFrom } from "rxjs";
 
+import { ENV_CONFIG } from "../config";
 import { Logger } from "../helpers/logger";
 import { PromiseFactory } from "../helpers/promise-factory";
 import { sleep } from "../helpers/sleep";
@@ -15,7 +16,7 @@ import { BraveSearch } from "../integrations/web-search/brave-search";
 import { Exception } from "../lib/custom-error";
 import { ISearchResult } from "../lib/interfaces/web-search-api-response";
 import { INamed } from "../lib/named-class";
-import { ClientVCManager } from "./client-voice";
+import { ClientVoiceController } from "./client-voice";
 import { AnyArgs, runWithPreconditions } from "./precondition-decorator";
 import { ClientActionPreconditions, PreconditionInfo } from "./preconditions";
 
@@ -35,7 +36,7 @@ export class ClientFunctions implements INamed {
   private readonly categoriser = new OllamaCategoriser();
   private readonly summariser = new SearchSummarizer();
 
-  private readonly clientVoice: ClientVCManager;
+  private readonly clientVoice: ClientVoiceController;
 
   private readonly preconditions: ClientActionPreconditions;
 
@@ -50,7 +51,52 @@ export class ClientFunctions implements INamed {
       this.client
     );
 
-    this.clientVoice = new ClientVCManager(new CoquiTTS());
+    this.clientVoice = new ClientVoiceController(new CoquiTTS());
+
+    this.clientVoice.OnAudioInteraction.subscribe(async (interaction) => {
+
+      if (ENV_CONFIG.ENABLE_WEB_SEARCH) {
+        const categoryInput: ChatMessageInput = {
+          channelId: interaction.channel.id,
+          username: (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
+          message: interaction.metadata.transcript
+        }
+        const category = await this.categoriser.getResponse(categoryInput);
+        this.logger.info(category);
+        const isWebSearch = category.toLocaleLowerCase().includes('[web search]');
+
+        let summary: string | undefined;
+        // test
+
+        if (isWebSearch) {
+          const webResults = await this.doWebSearch(category);
+          summary = await this.summariser.getResponse(webResults);
+
+
+          const responseInput: ChatMessageInput = {
+            channelId: interaction.channel.id,
+            username: (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
+            message: interaction.metadata.transcript,
+            context: summary
+          }
+
+
+          this.logger.info('summary', summary);
+
+          const response = await this.ollama.getResponse(responseInput);
+          await this.sayTTS(interaction.guild, interaction.channel, response);
+        }
+      }
+      else {
+        const responseInput: ChatMessageInput = {
+          channelId: interaction.channel.id,
+          username: (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
+          message: interaction.metadata.transcript
+        }
+        const response = await this.ollama.getResponse(responseInput);
+        await this.sayTTS(interaction.guild, interaction.channel, response);
+      }
+    });
   }
 
   public async onMessage(message: Message) {
@@ -62,17 +108,25 @@ export class ClientFunctions implements INamed {
       if (await this.preconditions.authorIsMe(message))
         return Promise.resolve('Author was me, ignoring message');
 
-      // const category = await this.categoriseMessage(message);
-      // const isWebSearch = category.includes('[Web Search]');
-      // if (isWebSearch && ENV_CONFIG.ENABLE_WEB_SEARCH) {
-      //   const webResults = await this.doWebSearch(category);
-      //   const summary = await this.summariser.getResponse(webResults);
-      //   await this.trySendLLMResponse(message, summary);
-      // }
-      // else
-      const sent = await this.trySendLLMResponse(message);
-      const contentForSpeech = sent.cleanContent;
-      await this.sayTTS(message, contentForSpeech);
+      if (message.content.startsWith('.join')) {
+        this.sendReply(message, 'Okay joining the voice channel now')
+        const guild = message.guild;
+        const channel = message.member?.voice.channel as VoiceBasedChannel;
+        return this.sayTTS(guild!, channel!, 'Ding, ding!')
+      }
+
+      const category = await this.categoriseMessage(message);
+      const isWebSearch = category.toLocaleLowerCase().includes('[web search]');
+      this.logger.info('msg isWebSearch', isWebSearch, category);
+      if (isWebSearch && ENV_CONFIG.ENABLE_WEB_SEARCH) {
+        const webResults = await this.doWebSearch(category);
+        const summary = await this.summariser.getResponse(webResults);
+        // console.log(summary);
+        await this.reply(message, summary);
+
+      }
+      else
+        await this.reply(message);
     }
     catch (error: unknown) {
       const exception = error as Exception;
@@ -83,6 +137,16 @@ export class ClientFunctions implements INamed {
       else
         this.logger.warn('Caught in onMessage', exception.message);
     }
+  }
+
+  private async reply(message: Message, optionalContext?: string) {
+    const sent = await this.trySendLLMResponse(message, optionalContext);
+    const contentForSpeech = sent.cleanContent;
+
+    const guild = message.guild;
+    const channel = message.member?.voice.channel as VoiceBasedChannel;
+    if (channel)
+      await this.sayTTS(guild!, channel!, contentForSpeech);
   }
 
   private async doWebSearch(category: string): Promise<ISearchResult[]> {
@@ -133,8 +197,8 @@ export class ClientFunctions implements INamed {
     }
   }
 
-  private async sayTTS(original: Message, myReplyContent: string) {
-    return this.clientVoice.doVoiceInteraction(original, () => Promise.resolve(myReplyContent));
+  private async sayTTS(guild: Guild, channel: VoiceBasedChannel, myReplyContent: string) {
+    return this.clientVoice.doVoiceInteraction(guild!, channel!, () => Promise.resolve(myReplyContent));
   }
 
   private async sendLLMResponse(message: Message, optionalContext?: string) {

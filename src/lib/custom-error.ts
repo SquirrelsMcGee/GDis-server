@@ -6,6 +6,8 @@ export enum ExceptionLevel {
 
 
 export class Exception extends Error {
+  public readonly errors?: unknown;
+
   constructor(public readonly level: ExceptionLevel, message?: string) {
     super(message)
   }

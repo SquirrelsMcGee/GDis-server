@@ -1,16 +1,17 @@
 import { writeFileSync } from "fs";
 import { catchError, lastValueFrom } from "rxjs";
 import { TTS_FILEPATH } from "../..";
+import { ENV_CONFIG } from "../../config";
 import { FatalException } from "../../lib/custom-error";
 import { HttpService } from "../http";
 import { ITextToSpeechProvider } from "./tts-provider";
 
 export class CoquiTTS implements ITextToSpeechProvider {
-  private readonly http = new HttpService('http://localhost', '5002');
+  private readonly http = new HttpService(ENV_CONFIG.COQUI_SERVER_URL, ENV_CONFIG.COQUI_SERVER_PORT);
 
   constructor() {
     this.pingServer().pipe(catchError(_ => {
-      throw new FatalException('Coqui server is unavailable');
+      throw new FatalException('TTS server is unavailable');
     })).subscribe();
   }
 
@@ -26,8 +27,7 @@ export class CoquiTTS implements ITextToSpeechProvider {
       return Promise.resolve();
     }
     catch (error) {
-      console.error('why is this erroring', error);
-      return Promise.reject();
+      return Promise.reject(error);
     }
   }
 

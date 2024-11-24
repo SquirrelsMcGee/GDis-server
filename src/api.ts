@@ -144,7 +144,7 @@ export class ApiManager implements INamed {
       res.send(message);
 
       // Delete any files
-      if (uploadPath) fs.unlink(uploadPath);
+      if (uploadPath) void fs.unlink(uploadPath);
 
       // Return
       return Promise.resolve();

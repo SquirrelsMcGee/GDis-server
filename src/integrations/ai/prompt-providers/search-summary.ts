@@ -5,7 +5,7 @@ import { IPromptProvider } from "./prompt-provider";
 export class WebSearchSummaryConversationPrompt implements IPromptProvider<unknown> {
 
   public provide(values?: unknown): string {
-    return `You are an automated tool for summarizing web search results.
+    return `You are an automated tool for summarizing web search results. Include urls and links in your response
 You will receive these results in XML-like format where there may be multiple searchContext objects
 <searchContext>
   <title> web page title </title>

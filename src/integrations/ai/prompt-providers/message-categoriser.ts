@@ -8,6 +8,7 @@ export class CategoriserConversationPrompt implements IPromptProvider<unknown> {
 [Chat]
 [Web Search] 
 If the category is [Web Search] give a suitable web search phrase (in human language) for the message alongside the category
+If the category is [Chat] don't say anything else
 Your response will be used in an automated process so only respond with these options Acknowledge these instructions with OKAY`;
   }
 }

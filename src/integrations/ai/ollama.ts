@@ -1,4 +1,5 @@
 import { catchError, lastValueFrom, map, Observable, tap } from 'rxjs';
+import { ENV_CONFIG } from '../../config';
 import { PromiseFactory } from '../../helpers/promise-factory';
 import { INamed } from '../../lib/named-class';
 import { HttpService } from '../http';
@@ -39,7 +40,7 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
     this.conversationProvider = conversationProvider;
     this.chatMessageProvider = chatMessageProvider;
 
-    this.http = new HttpService('http://localhost', '11434');
+    this.http = new HttpService(ENV_CONFIG.OLLAMA_SERVER_URL, ENV_CONFIG.OLLAMA_SERVER_PORT);
   }
 
   public async getResponse(input: ResponseInput): Promise<string> {
@@ -78,7 +79,7 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
 
   protected sendPrompt(prompt: string, context?: string): Observable<ResponseData> {
     const postBody: RequestData = {
-      model: 'llama3.2',
+      model: ENV_CONFIG.OLLAMA_MODEL_NAME,
       stream: false,
       prompt: prompt,
       context: context
@@ -114,6 +115,14 @@ export class Ollama extends OllamaBase<ChatMessageInput> {
     super('OllamaDiscord',
       new DiscordConversationPrompt(),
       new DiscordChatMessagePrompt());
+  }
+
+  public override async getResponse(input: ChatMessageInput): Promise<string> {
+    let res = await super.getResponse(input);
+    res = res.replace('dre:', '');
+    res = res.replace('Dre:', '');
+
+    return Promise.resolve(res);
   }
 
   getContextKey(input: ChatMessageInput): string {

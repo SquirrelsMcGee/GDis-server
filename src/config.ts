@@ -13,16 +13,42 @@ const {
   // Ollama settings
   ENABLE_OLLAMA_AI,
   OLLAMA_SERVER_URL,
-  OLLAMA_SERVER_PORT,
+  OLLAMA_SERVER_PORT, // Optional
+  OLLAMA_MODEL_NAME,
 
   // Coqui settings
   ENABLE_COQUI_AI,
   COQUI_SERVER_URL,
-  COQUI_SERVER_PORT
+  COQUI_SERVER_PORT,
+
+  // Transcription settings
+  ENABLE_TRANSCRIPTION,
+  TRANSCRIPTION_SERVER_URL,
+  TRANSCRIPTION_SERVER_PORT
 } = process.env;
 
-if (DISCORD_TOKEN === 'PLACEHOLDER' || !DISCORD_TOKEN)
-  throw new FatalException('Failed to start, Discord token unset');
+{
+  // Assert required options
+  let exceptionMessages = [];
+  if (DISCORD_TOKEN === 'PLACEHOLDER' || !DISCORD_TOKEN)
+    exceptionMessages.push('Discord token unset');
+
+  if (ENABLE_OLLAMA_AI) {
+    if (!OLLAMA_SERVER_URL)
+      exceptionMessages.push('Ollama server URL not provided');
+
+    if (!OLLAMA_MODEL_NAME)
+      exceptionMessages.push('Ollama model name not provided');
+  }
+
+  if (ENABLE_COQUI_AI) {
+    if (!COQUI_SERVER_URL)
+      exceptionMessages.push('Coqui URL not provided');
+  }
+
+  if (exceptionMessages.length > 0)
+    throw new FatalException('Failed to start ' + exceptionMessages.join(',\r\n    '));
+}
 
 export const ENV_CONFIG = {
   // Discord settings
@@ -34,12 +60,17 @@ export const ENV_CONFIG = {
 
   // Ollama settings
   ENABLE_OLLAMA_AI: ENABLE_OLLAMA_AI === 'true', // Convert to bool from string
-  OLLAMA_SERVER_URL,
+  OLLAMA_SERVER_URL: OLLAMA_SERVER_URL ?? 'http://localhost',
   OLLAMA_SERVER_PORT,
+  OLLAMA_MODEL_NAME: OLLAMA_MODEL_NAME!,
 
   // Coqui settings
   ENABLE_COQUI_AI: ENABLE_COQUI_AI === 'true', // Convert to bool from string
-  COQUI_SERVER_URL,
-  COQUI_SERVER_PORT
+  COQUI_SERVER_URL: COQUI_SERVER_URL ?? 'http://localhost',
+  COQUI_SERVER_PORT,
+
+  ENABLE_TRANSCRIPTION,
+  TRANSCRIPTION_SERVER_URL: TRANSCRIPTION_SERVER_URL ?? 'http://localhost',
+  TRANSCRIPTION_SERVER_PORT
 };
 

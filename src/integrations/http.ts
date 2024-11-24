@@ -65,6 +65,8 @@ export class HttpService implements INamed {
   private handleError<T>(method: string, error: Exception): Observable<T> {
     if (error.isFatal)
       this.logger.error(error.message);
+    else if (error.errors)
+      this.logger.error(error.errors as string);
     else
       this.logger.warn(error.message);
 
