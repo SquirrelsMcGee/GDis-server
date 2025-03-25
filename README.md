@@ -23,6 +23,8 @@ This part assumes you want to write code and have changes happen immediately
 
 1. Run `npm run dev`, this will automatically build the project, and then start the script in the `dist/` output folder
 
-## Production builds
+## External Runtime Dependencies
 
-TODO: fill in later i really don't care
+The following need to be installed and running in the background for all GDis functionality to work
+- [GDis-piper-tts](https://github.com/SquirrelsMcGee/GDis-piper-tts) - For generating text-to-speech
+- [GDis-transcribe](https://github.com/SquirrelsMcGee/GDis-transcribe) - For generating speech transcriptions
