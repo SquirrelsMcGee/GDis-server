@@ -2,7 +2,7 @@
 
 My personal custom Discord bot featuring local AI LLM integrations with web search.
 
-No releases nor instructiosn are provided. Do not steal this code without asking.
+No releases nor instructions are provided. Please do not use without attributing.
 
 _p.s. This is for fun, for me, and I don't care._
 
