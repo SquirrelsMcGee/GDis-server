@@ -7,6 +7,7 @@ import { Logger } from "../helpers/logger";
 import { PromiseFactory } from "../helpers/promise-factory";
 import { sleep } from "../helpers/sleep";
 import { splitStringIntoChunks } from "../helpers/string-functions";
+import { ChatHistorySummariser } from "../integrations/ai/chat-history-summariser";
 import { OllamaCategoriser } from "../integrations/ai/message-categoriser";
 import { Ollama } from "../integrations/ai/ollama";
 import { ChatMessageInput } from "../integrations/ai/prompt-providers/discord-chat";
@@ -33,6 +34,7 @@ export class ClientFunctions implements INamed {
 
   // AI Models
   private readonly ollama = new Ollama();
+  private readonly chatHistorySummariser = new ChatHistorySummariser();
   private readonly categoriser = new OllamaCategoriser();
   private readonly searchSummariser = new SearchSummariser();
 
@@ -138,6 +140,12 @@ export class ClientFunctions implements INamed {
     const sent = await this.trySendLLMResponse(message, optionalContext);
     const contentForSpeech = sent.cleanContent;
 
+    this.summarySoFar({
+      channelId: sent.channel.id,
+      username: this.client.user?.username ?? '',
+      message: contentForSpeech
+    });
+
     const guild = message.guild;
     const channel = message.member?.voice.channel as VoiceBasedChannel;
     if (channel)
@@ -197,6 +205,9 @@ export class ClientFunctions implements INamed {
 
     // Get the response from Ollama
     const input = this.getChatMessageInput(message, optionalContext);
+
+    // Add to the running summary
+    this.summarySoFar(input);
 
     // Get the ai generated content
     const ollamaResponse = await this.ollama.getResponse(input);
@@ -275,5 +286,15 @@ export class ClientFunctions implements INamed {
       context: context
     };
     return input;
+  }
+
+  private summarySoFar(input: ChatMessageInput): void {
+    return;
+    /*
+    this.chatHistorySummariser.getResponse(input).then(res => {
+      if (input.username === 'BotsByDre')
+        this.logger.info(res);
+    });
+    */
   }
 }

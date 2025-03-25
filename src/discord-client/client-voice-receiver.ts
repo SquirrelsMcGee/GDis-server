@@ -40,7 +40,7 @@ export class AudioRecorder {
 
     this.opusStream = receiver.subscribe(this.userId, {
       end: {
-        behavior: EndBehaviorType.AfterSilence, duration: 1000
+        behavior: EndBehaviorType.AfterSilence, duration: 500
       }
     });
 

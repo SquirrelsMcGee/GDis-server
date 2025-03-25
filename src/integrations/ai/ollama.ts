@@ -12,6 +12,7 @@ export type RequestData = {
   stream: boolean;
   prompt: string;
   context: string | undefined;
+  role: string;
 };
 
 export type ResponseData = {
@@ -57,7 +58,7 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
       context = await this.startConversation(contextKey);
 
     const prompt = this.getMessagePrompt(input);
-    return lastValueFrom(this.sendPrompt(prompt, context)
+    return lastValueFrom(this.sendPrompt(prompt, false, context)
       .pipe(
         tap(ollamaResponse => {
           //Loggerlog(this.name, 'Received Response', ollamaResponse.response.slice(0, 100), '...');
@@ -81,12 +82,13 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
     this.contextMap.set(contextKey, initial.context);
   }
 
-  protected sendPrompt(prompt: string, context?: string): Observable<ResponseData> {
+  protected sendPrompt(prompt: string, isSystem: boolean, context?: string): Observable<ResponseData> {
     const postBody: RequestData = {
       model: ENV_CONFIG.OLLAMA_MODEL_NAME,
       stream: false,
       prompt: prompt,
-      context: context
+      context: context,
+      role: isSystem ? 'system' : 'user'
     };
 
     ////Loggerlog(this.name, 'Sending Prompt to ollama', postBody);
@@ -105,7 +107,7 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
     // Get the prompt
     const prompt = this.conversationProvider.provide();
     // Send to the LLM
-    const initial = await lastValueFrom(this.sendPrompt(prompt, undefined));
+    const initial = await lastValueFrom(this.sendPrompt(prompt, true, undefined));
     // Update our context map
     this.setContext(contextKey, initial);
 

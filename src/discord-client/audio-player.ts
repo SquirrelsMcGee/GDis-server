@@ -1,7 +1,7 @@
-import { AudioPlayer, AudioPlayerError, AudioPlayerStatus, DiscordGatewayAdapterCreator, VoiceConnection, createAudioPlayer, createAudioResource, joinVoiceChannel } from "@discordjs/voice";
+import { AudioPlayer, AudioPlayerError, AudioPlayerStatus, createAudioPlayer, createAudioResource, DiscordGatewayAdapterCreator, joinVoiceChannel, VoiceConnection } from "@discordjs/voice";
 import { Guild, VoiceBasedChannel } from "discord.js";
 import fs from 'node:fs/promises';
-import { Observable, Subject, first } from "rxjs";
+import { buffer, filter, first, groupBy, map, merge, mergeMap, Observable, Subject, throttleTime, timer } from "rxjs";
 import { Logger } from "../helpers/logger";
 import { FatalException, NonFatalException } from "../lib/custom-error";
 import { AudioSavedMetadata } from "./client-voice";
@@ -12,9 +12,15 @@ import { DIR_NAME } from "..";
 import { WhisperTranscription } from "../integrations/stt/whisper";
 import { AudioRecorder } from "./client-voice-receiver";
 
+export class AudioBufferedEvent {
+  constructor(
+    public readonly userId: string,
+    public readonly events: AudioSavedMetadata[]
+  ) { }
+}
 
 export class DiscordAudioPlayer {
-  public readonly onAudioSaved: Observable<AudioSavedMetadata>;
+  public readonly onAudioSaved: Observable<AudioBufferedEvent>;
 
   private connection?: VoiceConnection;
   private player?: AudioPlayer;
@@ -35,7 +41,17 @@ export class DiscordAudioPlayer {
     this.logger.setInfo(this.name);
 
     this.onAudioSavedSubject$ = new Subject<AudioSavedMetadata>();
-    this.onAudioSaved = this.onAudioSavedSubject$;
+    this.onAudioSaved = this.onAudioSavedSubject$.pipe(
+      groupBy(event => event.userId),
+      mergeMap(group$ => {
+        return group$.pipe(
+          //bufferWhen(() => timer(2000)), // Emit events that fall within the buffer time
+          buffer(merge(timer(2000), group$.pipe(throttleTime(500)))),
+          filter(bufferedEvents => bufferedEvents.length > 0), // Filter out empty buffers
+          map(bufferedEvents => ({ userId: group$.key, events: bufferedEvents }))
+        )
+      })
+    );
 
     this.playbackQueue = [];
     this.isPlaying = false;
@@ -50,7 +66,7 @@ export class DiscordAudioPlayer {
 
     this.connection.receiver.speaking.on('start', (userId) => {
       const recorder = new AudioRecorder(this.connection!, userId, this.audioFolder);
-      recorder.onComplete.pipe(first()).subscribe(async (file) => this.recordAudio(userId, file));
+      recorder.onComplete.pipe(first()).subscribe(async (file) => this.transcribeAudio(userId, file));
       recorder.startRecording();
     });
   }
@@ -103,11 +119,11 @@ export class DiscordAudioPlayer {
       channelId: channel.id,
       guildId: channel.guild.id,
       adapterCreator: guild.voiceAdapterCreator as DiscordGatewayAdapterCreator,
-      selfDeaf: true
+      selfDeaf: false
     });
   }
 
-  private async recordAudio(userId: string, file: string) {
+  private async transcribeAudio(userId: string, file: string) {
     this.logger.info('Getting transcription');
     if (!existsSync(file))
       return;
@@ -121,6 +137,7 @@ export class DiscordAudioPlayer {
       this.logger.warn('Transcription was of length 0, ignoring');
       return;
     }
+
     this.logger.info(`Transcription saved for userId={${userId}}, passing along`);
     this.onAudioSavedSubject$.next(new AudioSavedMetadata(userId, transcript));
   }

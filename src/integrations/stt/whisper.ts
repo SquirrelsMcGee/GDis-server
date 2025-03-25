@@ -27,7 +27,7 @@ export class WhisperTranscription implements ISpeechToTextProvider {
   private sendRequest(filename: string) {
     const filePath = path.resolve(this.audioFolder, filename);
     const stats = statSync(filePath)
-    if (stats.size / 1024 < 300) // Arbitrary minimum filesize
+    if (stats.size / 1024 < 250) // Arbitrary minimum filesize
       return of('')
 
     const formData = new FormData();

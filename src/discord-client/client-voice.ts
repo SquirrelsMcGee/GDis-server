@@ -56,7 +56,12 @@ export class ClientVoiceController implements INamed {
         this.playerMap.set(guild.id, newPlayer);
 
         player.onAudioSaved.subscribe(data => {
-          this.audioInteractionSubject$.next(new AudioInteraction(guild, channel, data));
+          this.logger.info(`Received ${data.events.length} transcription chunks`);
+          const userId = data.userId;
+          const combinedTranscript = data.events.map(e => e.transcript).join('\n ');
+          this.logger.info(combinedTranscript);
+          const newData = new AudioSavedMetadata(userId, combinedTranscript);
+          this.audioInteractionSubject$.next(new AudioInteraction(guild, channel, newData));
         });
       }
 
