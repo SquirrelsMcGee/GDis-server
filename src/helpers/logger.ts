@@ -1,5 +1,3 @@
-import { injectable } from "inversify";
-
 export enum LogLevel {
   ALL,
   DEBUG,
@@ -8,7 +6,6 @@ export enum LogLevel {
   ERROR
 }
 
-@injectable()
 export class Logger {
   private static currentLevel: LogLevel = LogLevel.DEBUG;
 

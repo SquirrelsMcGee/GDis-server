@@ -20,11 +20,9 @@ export class ApiManager implements INamed {
   private readonly guildsApi: GuildsApi;
 
   private readonly logger = new Logger();
+  private readonly clientManager: ClientManager = new ClientManager();
 
-  constructor(
-    private readonly port: number,
-    private readonly clientManager: ClientManager
-  ) {
+  constructor(private readonly port: number) {
     this.logger.setInfo(this.name);
 
     this.guildsApi = new GuildsApi(this.clientManager);
