@@ -35,16 +35,17 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
 
   protected readonly logger = new Logger();
 
-  constructor(name: string,
+  constructor(
+    name: string = 'OllamaBase',
     conversationProvider: IPromptProvider<unknown>,
     chatMessageProvider: IPromptProvider<ResponseInput>) {
-    this.name = name;
 
     this.conversationProvider = conversationProvider;
     this.chatMessageProvider = chatMessageProvider;
 
     this.http = new HttpService(ENV_CONFIG.OLLAMA_SERVER_URL, ENV_CONFIG.OLLAMA_SERVER_PORT);
 
+    this.name = name;
     this.logger.setInfo(this.name);
   }
 
@@ -117,8 +118,9 @@ export abstract class OllamaBase<ResponseInput> implements INamed, IOllama<Respo
 }
 
 export class Ollama extends OllamaBase<ChatMessageInput> {
-  constructor() {
-    super('OllamaDiscord',
+  constructor(name: string) {
+    super(
+      name,
       new DiscordConversationPrompt(),
       new DiscordChatMessagePrompt());
   }

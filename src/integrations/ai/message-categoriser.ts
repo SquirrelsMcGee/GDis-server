@@ -6,7 +6,6 @@ import { BasicMessagePrompt, CategoriserConversationPrompt } from "./prompt-prov
 import { IPromptProvider } from "./prompt-providers/prompt-provider";
 
 export class OllamaCategoriser extends Ollama implements INamed {
-  public readonly name: string = 'MessageCategoriser';
 
   protected readonly conversationProvider: IPromptProvider<unknown> = new CategoriserConversationPrompt();
   protected readonly chatMessageProvider: IPromptProvider<ChatMessageInput> = new BasicMessagePrompt();
@@ -14,7 +13,7 @@ export class OllamaCategoriser extends Ollama implements INamed {
   private readonly contextKey = Date.now().toString();
 
   constructor() {
-    super();
+    super('MessageCategoriser');
   }
 
   public override async getResponse(input: ChatMessageInput): Promise<string> {

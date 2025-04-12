@@ -3,9 +3,11 @@ import { OllamaBase } from "./ollama";
 import { WebSearchSummaryConversationPrompt, WebSearchSummaryMessagePrompt } from "./prompt-providers/search-summary";
 
 export class SearchSummariser extends OllamaBase<ISearchResult[]> {
+
   private readonly contextKey: string = Date.now().toString();
   constructor() {
-    super('SearchSummarizer',
+    super(
+      'SearchSummariser',
       new WebSearchSummaryConversationPrompt(),
       new WebSearchSummaryMessagePrompt());
   }

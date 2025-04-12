@@ -59,14 +59,15 @@ export class ClientActionPreconditions implements INamed {
   }
 
 
-  /** Internal checks */
-  private async isMentionOrReply(message: Message): Promise<boolean> {
+  async isMentionOrReply(message: Message): Promise<boolean> {
     const isMention = await this.isMention(message);
     const isReply = await this.isReply(message);
     return Promise.resolve(isMention || isReply);
   }
 
+  /** Internal checks */
   private async isMention(message: Message): Promise<boolean> {
+    console.log(message.mentions.users);
     const isMention = message.mentions.users.map(u => u.id).includes(this.client.user?.id ?? '');
     return Promise.resolve(isMention);
   }

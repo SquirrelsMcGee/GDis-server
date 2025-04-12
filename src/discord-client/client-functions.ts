@@ -1,5 +1,4 @@
 import { ChannelType, Client, Guild, GuildChannel, Message, PermissionsBitField, TextChannel, VoiceBasedChannel } from "discord.js";
-
 import { lastValueFrom } from "rxjs";
 
 import { ENV_CONFIG } from "../config";
@@ -8,6 +7,7 @@ import { PromiseFactory } from "../helpers/promise-factory";
 import { sleep } from "../helpers/sleep";
 import { splitStringIntoChunks } from "../helpers/string-functions";
 import { ChatHistorySummariser } from "../integrations/ai/chat-history-summariser";
+import { InjectionGuard } from "../integrations/ai/injection-guard";
 import { OllamaCategoriser } from "../integrations/ai/message-categoriser";
 import { Ollama } from "../integrations/ai/ollama";
 import { ChatMessageInput } from "../integrations/ai/prompt-providers/discord-chat";
@@ -18,7 +18,7 @@ import { Exception } from "../lib/custom-error";
 import { ISearchResult } from "../lib/interfaces/web-search-api-response";
 import { INamed } from "../lib/named-class";
 import { ClientVoiceController } from "./client-voice";
-import { AnyArgs, runWithPreconditions } from "./precondition-decorator";
+import { runWithPreconditions } from "./precondition-decorator";
 import { ClientActionPreconditions, PreconditionInfo } from "./preconditions";
 
 export class ClientFunctions implements INamed {
@@ -32,11 +32,30 @@ export class ClientFunctions implements INamed {
   // Integrations
   private readonly braveSearch: BraveSearch = new BraveSearch();
 
-  // AI Models
-  private readonly ollama = new Ollama();
-  private readonly chatHistorySummariser = new ChatHistorySummariser();
+  // LLM layers
+  /**
+   * LLM Layers
+   * 
+   * The way this works is that multiple LLM conversations happen in sequence
+   * 1. InjectionGuard
+   *    This returns a simple 'yes' or 'no' if the input is detected as an injection attack
+   * 2. Categoriser
+   *    This returns an intent for the input, currently supports 'Chat' and 'WebSearch'
+   * 3. SearchSummariser
+   *    If the intent is 'WebSearch' this summarises the search results (badly)
+   * 4. Ollama - TODO Change name
+   *    Main LLM conversation for the chatbot
+   * 5. ChatHistorySummariser
+   *    Creates a sort of "memory" for the chatbot by summarising the conversation thus far
+   *    TODO - unfinished and currently disabled
+   */
+
+  // InjectionGuard hopefully should block most people from affecting later models
+  private readonly injectionGuard = new InjectionGuard();
+  private readonly chatbot = new Ollama('Ollama Core');
   private readonly categoriser = new OllamaCategoriser();
   private readonly searchSummariser = new SearchSummariser();
+  private readonly chatHistorySummariser = new ChatHistorySummariser();
 
   private readonly clientVoice: ClientVoiceController;
 
@@ -47,9 +66,9 @@ export class ClientFunctions implements INamed {
     private readonly cacheMessages: boolean
   ) {
     this.logger.setInfo(this.name);
-
+    820763406389870645
     this.preconditions = new ClientActionPreconditions(
-      ['673908382809325620', '820763406389870642'],
+      ['673908382809325620', '1302754124147855380', '1355678852445114683'],
       this.client
     );
 
@@ -82,7 +101,7 @@ export class ClientFunctions implements INamed {
           );
 
           this.logger.info('summary', summary);
-          const response = await this.ollama.getResponse(responseInput);
+          const response = await this.chatbot.getResponse(responseInput);
           await this.sayTTS(interaction.guild, interaction.channel, response);
         }
       }
@@ -92,7 +111,7 @@ export class ClientFunctions implements INamed {
           (await interaction.guild.members.fetch(interaction.metadata.userId)).displayName,
           interaction.metadata.transcript
         );
-        const response = await this.ollama.getResponse(responseInput);
+        const response = await this.chatbot.getResponse(responseInput);
         await this.sayTTS(interaction.guild, interaction.channel, response);
       }
     });
@@ -113,6 +132,23 @@ export class ClientFunctions implements INamed {
         const channel = message.member?.voice.channel as VoiceBasedChannel;
         return this.sayTTS(guild!, channel!, 'Ding, ding!')
       }
+
+      const guardResult = await this.guardInput(message);
+      this.logger.error('GuardResult', guardResult)
+      if (!guardResult) {
+        await this.sendReply(message, 'Injection attack detected! Ignoring :)');
+        return Promise.resolve('Input was bad, ignoring');
+      }
+
+      if (await this.preconditions.isNotSystemMessage(message) === false)
+        return Promise.resolve('Was system message, ignoring');
+
+      const isThreadOrDirect = await this.preconditions.isThreadOrDirect(message);
+      const isSandboxed = await this.preconditions.isSandboxed(message);
+      const isAcceptableChannel = isThreadOrDirect || isSandboxed;
+
+      if (!isAcceptableChannel)
+        return Promise.resolve('Message ignored');
 
       const category = await this.categoriseMessage(message);
       const isWebSearch = category.toLocaleLowerCase().includes('[web search]');
@@ -148,16 +184,25 @@ export class ClientFunctions implements INamed {
 
     const guild = message.guild;
     const channel = message.member?.voice.channel as VoiceBasedChannel;
-    if (channel)
-      await this.sayTTS(guild!, channel!, contentForSpeech);
+    //if (channel)
+    //  await this.sayTTS(guild!, channel!, contentForSpeech);
   }
 
   private async doWebSearch(category: string): Promise<ISearchResult[]> {
     this.logger.info('Using websearch for this request');
-
     const searchTerm = category.slice('[Web Search]'.length);
 
     return lastValueFrom(this.braveSearch.search(searchTerm));
+  }
+
+  private async guardInput(message: Message): Promise<boolean> {
+    this.logger.info('Checking input is acceptable', message.cleanContent);
+    const input = this.getChatMessageInput(message);
+    const ollamaResponse = (await this.injectionGuard.getResponse(input)).toLocaleLowerCase();
+    const result = ollamaResponse.startsWith('no'); // 'no' when input is not bad
+    this.logger.info(ollamaResponse);
+
+    return Promise.resolve(result);
   }
 
   private async categoriseMessage(message: Message): Promise<string> {
@@ -174,18 +219,8 @@ export class ClientFunctions implements INamed {
   }
 
   private async trySendLLMResponse(message: Message, optionalContext?: string) {
-    // Define conditions for this action
-    const preconditions: PreconditionInfo[] = [
-      { name: 'isNotSystemMessage', execute: () => this.preconditions.isNotSystemMessage(message) },
-      { name: 'isThreadOrDirect', execute: () => this.preconditions.isThreadOrDirect(message) },
-      { name: 'isSandboxed', execute: () => this.preconditions.isSandboxed(message) }
-    ];
-
     try {
-      return runWithPreconditions<Message, AnyArgs<Message>>(
-        this.sendLLMResponse.bind(this, message, optionalContext),
-        preconditions
-      );
+      return this.sendLLMResponse(message, optionalContext);
     }
     catch (error) {
       this.logger.error('Caught in trySendLLMResponse', error);
@@ -195,6 +230,10 @@ export class ClientFunctions implements INamed {
 
   private async sayTTS(guild: Guild, channel: VoiceBasedChannel, myReplyContent: string) {
     return this.clientVoice.doVoiceInteraction(guild!, channel!, () => Promise.resolve(myReplyContent));
+  }
+
+  private getRandomInt(max: number): number {
+    return Math.floor(Math.random() * max);
   }
 
   private async sendLLMResponse(message: Message, optionalContext?: string) {
@@ -210,7 +249,7 @@ export class ClientFunctions implements INamed {
     this.summarySoFar(input);
 
     // Get the ai generated content
-    const ollamaResponse = await this.ollama.getResponse(input);
+    const ollamaResponse = await this.chatbot.getResponse(input);
 
     // Wait a second to make the response a bit nicer :)
     await sleep(500);
@@ -257,7 +296,7 @@ export class ClientFunctions implements INamed {
     return runWithPreconditions(
       () => {
         if (content.length >= 2000)
-          return sendMultiple(splitStringIntoChunks(content, 1000))
+          return sendMultiple(splitStringIntoChunks(content, 1900))
         else
           return sendText(content);
       },
