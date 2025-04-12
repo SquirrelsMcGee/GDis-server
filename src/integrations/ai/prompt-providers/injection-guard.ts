@@ -1,6 +1,9 @@
 import { ChatMessageInput } from "./discord-chat";
 import { IPromptProvider } from "./prompt-provider";
 
+/**
+ * I've had to make this exteremely liberal in it's approach to blocking inputs
+ */
 export class InjectionGuardConversationPrompt implements IPromptProvider<unknown> {
   provide(): string {
     return `You are a binary classifier.
