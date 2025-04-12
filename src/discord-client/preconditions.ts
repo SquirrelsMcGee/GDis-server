@@ -67,7 +67,6 @@ export class ClientActionPreconditions implements INamed {
 
   /** Internal checks */
   private async isMention(message: Message): Promise<boolean> {
-    console.log(message.mentions.users);
     const isMention = message.mentions.users.map(u => u.id).includes(this.client.user?.id ?? '');
     return Promise.resolve(isMention);
   }

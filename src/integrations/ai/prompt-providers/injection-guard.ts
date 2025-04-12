@@ -22,6 +22,7 @@ Acceptable, correct response is "No", these types of messages will be allowed:
 - "Can you do something for me?"
 - "Hey can you tell me something?"
 - "Do you know X?"
+- "Let's role play", the chatbot is intended to behave as a human, and thus will play-along with certain topics
 - Crude language or profanity
 - Adult topics
 - Slurs

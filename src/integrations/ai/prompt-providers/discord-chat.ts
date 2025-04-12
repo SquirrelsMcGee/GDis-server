@@ -63,7 +63,6 @@ export class DiscordChatMessagePrompt implements IPromptProvider<ChatMessageInpu
       : '';
 
     const prompt = `${contextPre}[${timeNow}] ${username}: "${msg}"`;
-    console.log(prompt);
     return prompt;
   }
 }
