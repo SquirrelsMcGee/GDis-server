@@ -1,6 +1,5 @@
 import { AudioPlayer, AudioPlayerError, AudioPlayerStatus, createAudioPlayer, createAudioResource, DiscordGatewayAdapterCreator, joinVoiceChannel, VoiceConnection } from "@discordjs/voice";
 import { Guild, VoiceBasedChannel } from "discord.js";
-import fs from 'node:fs/promises';
 import { buffer, filter, first, groupBy, map, merge, mergeMap, Observable, Subject, throttleTime, timer } from "rxjs";
 import { Logger } from "../helpers/logger";
 import { FatalException, NonFatalException } from "../lib/custom-error";
@@ -34,11 +33,14 @@ export class DiscordAudioPlayer {
   private playbackQueue: string[];
   private isPlaying: boolean;
 
+  private activeRecordings: Map<string, boolean>;
+
   constructor(private readonly name: string,
     guild: Guild,
     channel: VoiceBasedChannel
   ) {
     this.logger.setInfo(this.name);
+    this.activeRecordings = new Map<string, boolean>();
 
     this.onAudioSavedSubject$ = new Subject<AudioSavedMetadata>();
     this.onAudioSaved = this.onAudioSavedSubject$.pipe(
@@ -65,8 +67,22 @@ export class DiscordAudioPlayer {
     this.player.on(AudioPlayerStatus.Idle, this.onIdle.bind(this));
 
     this.connection.receiver.speaking.on('start', (userId) => {
+      if (userId !== '147399011567927296')
+        return;
+
+      // Prevent starting multiple recordings close together
+      // Don't create a new recorder if one already exists, this prevents multiple recorders happening for stuttered speech
+      if (this.activeRecordings.get(userId)) return;
+
+      this.activeRecordings.set(userId, true);
+
       const recorder = new AudioRecorder(this.connection!, userId, this.audioFolder);
-      recorder.onComplete.pipe(first()).subscribe(async (file) => this.transcribeAudio(userId, file));
+      recorder.onComplete.pipe(first()).subscribe(async (file) => {
+        await this.transcribeAudio(userId, file);
+        setTimeout(() => {
+          this.activeRecordings.set(userId, false);
+        }, 500); // Debounce time
+      });
       recorder.startRecording();
     });
   }
@@ -131,7 +147,7 @@ export class DiscordAudioPlayer {
     const transcript = await this.transcriber.generateTranscript(file)
 
     // Delete any leftover files
-    if (file) void fs.unlink(file);
+    //if (file) void fs.unlink(file);
 
     if (transcript.length <= 0) {
       this.logger.warn('Transcription was of length 0, ignoring');

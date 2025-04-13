@@ -126,16 +126,17 @@ export class ClientFunctions implements INamed {
       if (await this.preconditionMap.test(PreconditionType.authorIsMe, message))
         return Promise.resolve('Author was me, ignoring message');
 
-      if (!await this.guardInput(message)) {
-        return Promise.resolve('Input was bad, ignoring');
-      }
-
-      if (message.content.startsWith('.join')) {
+      if (message.content.startsWith('.join') && ENV_CONFIG.ENABLE_TTS) {
         this.sendReply(message, 'Okay joining the voice channel now')
         const guild = message.guild;
         const channel = message.member?.voice.channel as VoiceBasedChannel;
         return this.sayTTS(guild!, channel!, 'Ding, ding!')
       }
+
+      if (!await this.guardInput(message)) {
+        return Promise.resolve('Input was bad, ignoring');
+      }
+
 
       if (await this.preconditionMap.assert(PreconditionType.isNotSystemMessage, message) === false)
         return new NonFatalException('Was system message, ignoring');

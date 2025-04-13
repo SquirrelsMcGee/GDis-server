@@ -5,6 +5,7 @@ import fileUpload, { UploadedFile } from 'express-fileupload';
 import md5 from 'md5';
 import fs from 'node:fs/promises';
 
+import { ENV_CONFIG } from './config';
 import { ClientManager, FileUploadData } from './discord-client/client-manager';
 import { Logger } from './helpers/logger';
 import { PermissionCheck } from './helpers/permission-checker';
@@ -20,9 +21,11 @@ export class ApiManager implements INamed {
   private readonly guildsApi: GuildsApi;
 
   private readonly logger = new Logger();
-  private readonly clientManager: ClientManager = new ClientManager();
 
-  constructor(private readonly port: number) {
+  constructor(
+    private readonly port: number,
+    private readonly clientManager: ClientManager
+  ) {
     this.logger.setInfo(this.name);
 
     this.guildsApi = new GuildsApi(this.clientManager);
@@ -44,7 +47,11 @@ export class ApiManager implements INamed {
 
       ['GET/messages', this.getMessages.bind(this)],
       ['GET/history', this.getHistory.bind(this)],
-      ['POST/send', this.postMessage.bind(this)]
+      ['POST/send', this.postMessage.bind(this)],
+
+      // Settings
+      ['POST/settings', this.updateSettings.bind(this)],
+      ['GET/settings', this.getSettings.bind(this)]
     ])
 
     this.map.forEach((method, key) => {
@@ -71,6 +78,7 @@ export class ApiManager implements INamed {
   private async getMessages(req: Request, res: Response) {
     try {
       const messages: IMessageResponse[] = this.clientManager.getMessages().map(message => ({
+        user: message.author.username,
         content: message.content,
         createdTimestamp: message.createdTimestamp,
         attachments: message.attachments.map(a => ({
@@ -98,6 +106,7 @@ export class ApiManager implements INamed {
         return Promise.reject('Failed to getHistory, no msgs');
 
       const response: IMessageResponse[] = msgs.map(message => ({
+        user: message.author.username,
         content: message.content,
         createdTimestamp: message.createdTimestamp,
         attachments: message.attachments.map(a => ({
@@ -151,6 +160,35 @@ export class ApiManager implements INamed {
       this.logger.error('Failed to post Message', error);
       return PromiseFactory.reject(this.name, ['fn postMessage', 'Failed to postMessage', error]);
     }
+  }
+
+  private updateSettings(req: Request, res: Response) {
+    const settingKey = req.query['settingKey'];
+
+    if (settingKey === 'ENABLE_TTS')
+      ENV_CONFIG.ENABLE_TTS = !ENV_CONFIG.ENABLE_TTS;
+
+    if (settingKey === 'ENABLE_CHAT_HISTORY_SUMMARY')
+      ENV_CONFIG.ENABLE_CHAT_HISTORY_SUMMARY = !ENV_CONFIG.ENABLE_CHAT_HISTORY_SUMMARY;
+
+    if (settingKey === 'ENABLE_WEB_SEARCH')
+      ENV_CONFIG.ENABLE_WEB_SEARCH = !ENV_CONFIG.ENABLE_WEB_SEARCH;
+
+    res.send({
+      ENABLE_TTS: ENV_CONFIG.ENABLE_TTS,
+      ENABLE_CHAT_HISTORY_SUMMARY: ENV_CONFIG.ENABLE_CHAT_HISTORY_SUMMARY,
+      ENABLE_WEB_SEARCH: ENV_CONFIG.ENABLE_WEB_SEARCH,
+    });
+    return Promise.resolve();
+  }
+
+  private getSettings(req: Request, res: Response) {
+    res.send({
+      ENABLE_TTS: ENV_CONFIG.ENABLE_TTS,
+      ENABLE_CHAT_HISTORY_SUMMARY: ENV_CONFIG.ENABLE_CHAT_HISTORY_SUMMARY,
+      ENABLE_WEB_SEARCH: ENV_CONFIG.ENABLE_WEB_SEARCH,
+    });
+    return Promise.resolve();
   }
 
   private stripFileExtension(filename: string) {
