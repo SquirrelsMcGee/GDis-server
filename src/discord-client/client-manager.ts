@@ -35,13 +35,10 @@ export class ClientManager implements INamed {
       ],
     });
 
-    this.client.on('messageCreate', async (message) => this.functions.onMessage(message));
-
     this.functions = new ClientFunctions(this.client, true);
 
-    this.client.once("ready", (client) => {
-      this.logger.info(`Logged in as: ${client.user.username}`);
-    });
+    this.client.on('messageCreate', async (message) => this.functions.onMessage(message));
+    this.client.once("ready", (client) => this.logger.info(`Logged in as: ${client.user.username}`));
 
     this.client.login(ENV_CONFIG.DISCORD_TOKEN);
   }

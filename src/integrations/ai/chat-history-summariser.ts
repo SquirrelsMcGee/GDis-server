@@ -10,11 +10,15 @@ export class ChatHistorySummariser extends Ollama implements INamed {
   protected readonly conversationProvider: IPromptProvider<unknown> = new ChatSummaryConversationPrompt();
   protected readonly chatMessageProvider: IPromptProvider<ChatMessageInput> = new ChatSummaryMessagePrompt();
 
-  constructor() {
+  constructor(private readonly username: string) {
     super('ChatHistorySummariser');
   }
 
   public override async getResponse(input: ChatMessageInput): Promise<string> {
-    return super.getResponse(input);
+    const result = await super.getResponse(input);
+    if (input.username === this.username)
+      this.logger.info(result);
+
+    return Promise.resolve(result);
   }
 } 

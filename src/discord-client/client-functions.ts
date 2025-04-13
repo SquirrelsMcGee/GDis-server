@@ -1,4 +1,4 @@
-import { ChannelType, Client, Guild, GuildChannel, Message, PermissionsBitField, TextChannel, VoiceBasedChannel } from "discord.js";
+import { ChannelType, Client, Guild, Message, PermissionsBitField, TextChannel, VoiceBasedChannel } from "discord.js";
 import { lastValueFrom } from "rxjs";
 
 import { ENV_CONFIG } from "../config";
@@ -14,12 +14,11 @@ import { ChatMessageInput } from "../integrations/ai/prompt-providers/discord-ch
 import { SearchSummariser } from "../integrations/ai/search-summariser";
 import { CoquiTTS } from "../integrations/tts/coqui";
 import { BraveSearch } from "../integrations/web-search/brave-search";
-import { Exception } from "../lib/custom-error";
+import { Exception, NonFatalException } from "../lib/custom-error";
 import { ISearchResult } from "../lib/interfaces/web-search-api-response";
 import { INamed } from "../lib/named-class";
 import { ClientVoiceController } from "./client-voice";
-import { runWithPreconditions } from "./precondition-decorator";
-import { ClientActionPreconditions, PreconditionInfo } from "./preconditions";
+import { ClientActionConditionMap, PreconditionType } from "./precondition-map";
 
 export class ClientFunctions implements INamed {
   public readonly name: string = 'ClientFunctions';
@@ -55,19 +54,21 @@ export class ClientFunctions implements INamed {
   private readonly chatbot = new Ollama('Ollama Core');
   private readonly categoriser = new OllamaCategoriser();
   private readonly searchSummariser = new SearchSummariser();
-  private readonly chatHistorySummariser = new ChatHistorySummariser();
+  private readonly chatHistorySummariser: ChatHistorySummariser;
 
   private readonly clientVoice: ClientVoiceController;
 
-  private readonly preconditions: ClientActionPreconditions;
+  private readonly preconditionMap: ClientActionConditionMap;
 
   constructor(
     private readonly client: Client,
     private readonly cacheMessages: boolean
   ) {
     this.logger.setInfo(this.name);
-    820763406389870645
-    this.preconditions = new ClientActionPreconditions(
+
+    this.chatHistorySummariser = new ChatHistorySummariser(this.client.user?.username ?? '');
+
+    this.preconditionMap = new ClientActionConditionMap(
       ['673908382809325620', '1302754124147855380', '1355678852445114683'],
       this.client
     );
@@ -99,10 +100,9 @@ export class ClientFunctions implements INamed {
             interaction.metadata.transcript,
             summary
           );
-
           this.logger.info('summary', summary);
           const response = await this.chatbot.getResponse(responseInput);
-          await this.sayTTS(interaction.guild, interaction.channel, response);
+          this.sayTTS(interaction.guild, interaction.channel, response);
         }
       }
       else {
@@ -112,7 +112,7 @@ export class ClientFunctions implements INamed {
           interaction.metadata.transcript
         );
         const response = await this.chatbot.getResponse(responseInput);
-        await this.sayTTS(interaction.guild, interaction.channel, response);
+        this.sayTTS(interaction.guild, interaction.channel, response);
       }
     });
   }
@@ -123,8 +123,12 @@ export class ClientFunctions implements INamed {
         this.messageCache.push(message);
 
       // If the message is from me, stop
-      if (await this.preconditions.authorIsMe(message))
+      if (await this.preconditionMap.test(PreconditionType.authorIsMe, message))
         return Promise.resolve('Author was me, ignoring message');
+
+      if (!await this.guardInput(message)) {
+        return Promise.resolve('Input was bad, ignoring');
+      }
 
       if (message.content.startsWith('.join')) {
         this.sendReply(message, 'Okay joining the voice channel now')
@@ -133,18 +137,11 @@ export class ClientFunctions implements INamed {
         return this.sayTTS(guild!, channel!, 'Ding, ding!')
       }
 
-      const guardResult = await this.guardInput(message);
-      this.logger.error('GuardResult', guardResult)
-      if (!guardResult) {
-        await this.sendReply(message, 'Injection attack detected! Ignoring :)');
-        return Promise.resolve('Input was bad, ignoring');
-      }
+      if (await this.preconditionMap.assert(PreconditionType.isNotSystemMessage, message) === false)
+        return new NonFatalException('Was system message, ignoring');
 
-      if (await this.preconditions.isNotSystemMessage(message) === false)
-        return Promise.resolve('Was system message, ignoring');
-
-      const isThreadOrDirect = await this.preconditions.isThreadOrDirect(message);
-      const isSandboxed = await this.preconditions.isSandboxed(message);
+      const isThreadOrDirect = await this.preconditionMap.test(PreconditionType.isThreadOrDirect, message);
+      const isSandboxed = await this.preconditionMap.test(PreconditionType.sandboxed, message);
       const isAcceptableChannel = isThreadOrDirect || isSandboxed;
 
       if (!isAcceptableChannel)
@@ -184,8 +181,8 @@ export class ClientFunctions implements INamed {
 
     const guild = message.guild;
     const channel = message.member?.voice.channel as VoiceBasedChannel;
-    //if (channel)
-    //  await this.sayTTS(guild!, channel!, contentForSpeech);
+    if (channel)
+      this.sayTTS(guild!, channel!, contentForSpeech);
   }
 
   private async doWebSearch(category: string): Promise<ISearchResult[]> {
@@ -229,14 +226,14 @@ export class ClientFunctions implements INamed {
   }
 
   private async sayTTS(guild: Guild, channel: VoiceBasedChannel, myReplyContent: string) {
+    if (!ENV_CONFIG.ENABLE_TTS)
+      return Promise.resolve('TTS Disabled');
+
     return this.clientVoice.doVoiceInteraction(guild!, channel!, () => Promise.resolve(myReplyContent));
   }
 
-  private getRandomInt(max: number): number {
-    return Math.floor(Math.random() * max);
-  }
-
   private async sendLLMResponse(message: Message, optionalContext?: string) {
+    // Get channel
     const channel = message.thread ?? (message.channel as TextChannel);
 
     // Start typing...
@@ -259,24 +256,13 @@ export class ClientFunctions implements INamed {
   }
 
   public async sendReply(replyTo: Message, content: string): Promise<Message> {
-    const preconditions: PreconditionInfo[] = [
-      {
-        name: 'isCorrectChannelType',
-        execute: () =>
-          this.preconditions.isChannelType(
-            replyTo,
-            [ChannelType.GuildText, ChannelType.PrivateThread])
-      },
-      {
-        name: 'hasGuildChannelPermissions',
-        execute: () =>
-          this.preconditions.hasGuildChannelPermissions(
-            replyTo.channel as GuildChannel,
-            [PermissionsBitField.Flags.SendMessages])
-      }
-    ]
+    await this.preconditionMap.assert(PreconditionType.isChannelType, replyTo,
+      ChannelType.GuildText, ChannelType.PrivateThread);
 
-    const isThread = await this.preconditions.isThread(replyTo);
+    await this.preconditionMap.assert(PreconditionType.hasGuildChannelPermissions, replyTo,
+      PermissionsBitField.Flags.SendMessages);
+
+    const isThread = await this.preconditionMap.test(PreconditionType.isThread, replyTo);
 
     const sendText = async (txt: string) => {
       return isThread
@@ -289,22 +275,14 @@ export class ClientFunctions implements INamed {
         await sleep(500);
         await sendText(txt);
       }
-
       return sendText(txts.pop() ?? '');
     }
 
-    return runWithPreconditions(
-      () => {
-        if (content.length >= 2000)
-          return sendMultiple(splitStringIntoChunks(content, 1900))
-        else
-          return sendText(content);
-      },
-      preconditions
-    );
-
+    if (content.length >= 2000)
+      return sendMultiple(splitStringIntoChunks(content, 1900))
+    else
+      return sendText(content);
   }
-
 
   private getChatMessageInput(message: Message, context?: string) {
     return this.getChatMessageInputRaw(
@@ -328,12 +306,10 @@ export class ClientFunctions implements INamed {
   }
 
   private summarySoFar(input: ChatMessageInput): void {
-    return;
-    /*
-    this.chatHistorySummariser.getResponse(input).then(res => {
-      if (input.username === 'BotsByDre')
-        this.logger.info(res);
-    });
-    */
+    if (!ENV_CONFIG.ENABLE_CHAT_HISTORY_SUMMARY)
+      return;
+
+    // Run this asynchronously
+    this.chatHistorySummariser.getResponse(input);
   }
 }

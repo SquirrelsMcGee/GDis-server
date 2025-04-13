@@ -2,23 +2,14 @@ import { ChannelType, Client, GuildChannel, Message } from "discord.js";
 import { PermissionCheck } from "../helpers/permission-checker";
 import { INamed } from "../lib/named-class";
 
-export type Precondition = (...args: unknown[]) => Promise<boolean>;
-
-/**
- * TODO: ideally each condition is actually it's own class that can spit out it's own name
- */
-export type PreconditionInfo = {
-  name: string;
-  execute: Precondition;
-};
-
-export class ClientActionPreconditions implements INamed {
+export class ClientActionConditions implements INamed {
   public readonly name: string = 'ClientActionPreconditions';
 
   constructor(
     private readonly sandboxList: string[],
     private readonly client: Client
-  ) { }
+  ) {
+  }
 
   // Precondition method to check if a message is not a system message
   async isNotSystemMessage(message: Message): Promise<boolean> {
@@ -46,50 +37,48 @@ export class ClientActionPreconditions implements INamed {
   }
 
   async isChannelType(message: Message, types: ChannelType[]): Promise<boolean> {
-    return Promise.resolve(types.includes(message.channel.type))
+    const result = types.includes(message.channel.type);
+    return Promise.resolve(result)
   }
 
-  async hasGuildChannelPermissions<T extends GuildChannel>(channel: T, flags: bigint[]): Promise<boolean> {
-    return Promise.resolve(PermissionCheck.hasGuildChannelPermissions(channel, flags));
+  async hasGuildChannelPermissions(message: Message, flags: bigint[]): Promise<boolean> {
+    const channel = message.channel as GuildChannel;
+    const result = PermissionCheck.hasGuildChannelPermissions(channel, flags);
+    return Promise.resolve(result);
   }
 
   async isThread(message: Message): Promise<boolean> {
-    const isValid = await this.isChannelType(message, [ChannelType.PrivateThread]);
-    return Promise.resolve(isValid);
+    const result = await this.isChannelType(message, [ChannelType.PrivateThread]);
+    return Promise.resolve(result);
   }
-
 
   async isMentionOrReply(message: Message): Promise<boolean> {
     const isMention = await this.isMention(message);
     const isReply = await this.isReply(message);
-    return Promise.resolve(isMention || isReply);
+    const result = isMention || isReply;
+    return Promise.resolve(result);
   }
 
   /** Internal checks */
   private async isMention(message: Message): Promise<boolean> {
-    const isMention = message.mentions.users.map(u => u.id).includes(this.client.user?.id ?? '');
-    return Promise.resolve(isMention);
+    const result = message.mentions.users.map(u => u.id).includes(this.client.user?.id ?? '');
+    return Promise.resolve(result);
   }
 
   private async isReply(message: Message): Promise<boolean> {
-    // Check if the message is a reply to another message
-    if (message.reference?.messageId) {
-      try {
-        // Fetch the original message being replied to
-        const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+    if (!message.reference?.messageId)
+      return Promise.resolve(false);
 
-        // Check if the original message was sent by the bot
-        if (referencedMessage.author.id === this.client.user?.id)
-          return Promise.resolve(true);
-      }
-      catch (error) {
-        //Loggererror(this.name, 'fn isReply', error);
-      }
-      finally {
-        return Promise.resolve(false);
-      }
+    try {
+      // Fetch the original message being replied to
+      const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+
+      // Check if the original message was sent by the bot
+      if (referencedMessage.author.id === this.client.user?.id)
+        return Promise.resolve(true);
     }
-
-    return Promise.resolve(false);
+    finally {
+      return Promise.resolve(false);
+    }
   }
 }
